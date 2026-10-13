@@ -28,10 +28,7 @@ Thumbs.db
 .playwright-cli/
 
 # ---------------------------------------------------------------------------
-# Large binary assets: pushed separately (slow upload over proxy).
-# Remove this line once the model has been added.
 # ---------------------------------------------------------------------------
-game/public/models/tode.glb
 
 # ---------------------------------------------------------------------------
 # Course scaffolding (JetBrains Academy course materials — not part of the
