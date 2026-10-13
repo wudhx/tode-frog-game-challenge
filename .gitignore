@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+
+# Local env / editor
+.env
+.env.local
+.env.*.local
+*.local
+.idea/
+.vscode/
+*.iml
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Playwright artifacts
+.playwright-cli/
+
+# ---------------------------------------------------------------------------
+# Large binary assets: pushed separately (slow upload over proxy).
+# Remove this line once the model has been added.
+# ---------------------------------------------------------------------------
+game/public/models/tode.glb
+
+# ---------------------------------------------------------------------------
+# Course scaffolding (JetBrains Academy course materials — not part of the
+# submitted game). Only the `game/` folder is our own work.
+# ---------------------------------------------------------------------------
+/Introduction/
+/Skeleton/
+/Core_loop/
+/Visual/
+/Conclusion/
+/.junie/
+AGENTS.md
+course-info.yaml
+course-remote-info.yaml
+babel.config.cjs
+jest.config.js
+jsconfig.json
+utils.js
+__mocks__/
+run/
