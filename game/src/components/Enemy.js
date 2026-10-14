@@ -30,15 +30,17 @@ let modelTemplatePromise = null;
 function loadEnemyTemplate() {
   if (!modelTemplatePromise) {
     const loader = new GLTFLoader();
-    modelTemplatePromise = loader.loadAsync('/models/enemy.glb').then((gltf) => {
-      const template = gltf.scene;
+    modelTemplatePromise = loader
+      .loadAsync(`${import.meta.env.BASE_URL}models/enemy.glb`)
+      .then((gltf) => {
+        const template = gltf.scene;
 
-      // Authored Y-up; rotate into our Z-up world.
-      template.rotation.x = Math.PI / 2;
-      template.scale.setScalar(ENEMY_SCALE);
+        // Authored Y-up; rotate into our Z-up world.
+        template.rotation.x = Math.PI / 2;
+        template.scale.setScalar(ENEMY_SCALE);
 
-      return template;
-    });
+        return template;
+      });
   }
   return modelTemplatePromise;
 }

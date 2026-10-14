@@ -42,7 +42,7 @@ function placeHouse(template, position) {
  */
 export async function addHouses(housesGroup, playerGroup) {
   const loader = new GLTFLoader();
-  const gltf = await loader.loadAsync('/models/small_house.glb');
+  const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/small_house.glb`);
 
   const template = gltf.scene;
   template.scale.setScalar(HOUSE_SCALE);

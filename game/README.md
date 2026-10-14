@@ -1,77 +1,70 @@
-# Tode the Frog — 3D Browser Game
+# Tode the Frog — 3D Browser Survival Game
 
-> JetBrains Academy「Build Your Game Challenge」参赛作品
+> Submission for the **JetBrains Academy "Build Your Game Challenge"** (October 2026)
 
-一个用 **Three.js** 打造的 3D 浏览器生存游戏。你将操控青蛙 Tode，在怪物浪潮中跳跃闪避、用范围冲击波清场，尽可能活得更久、拿更高分。
+A 3D survival game built with **Three.js**. Guide Tode the Frog through waves of monsters: hop to dodge, unleash an area-of-effect shockwave to clear a path, and survive as long as you can for a higher score.
 
-## 在线试玩
+**▶ Play online:** https://wudhx.github.io/tode-frog-game-challenge/
 
-> 🔗 部署后在此填写链接
+## Gameplay
 
-## 玩法
-
-| 操作 | 按键 |
+| Action | Key |
 |---|---|
-| 移动（跳跃式） | ↑ ↓ ← → |
-| 范围攻击 | `Space` |
-| 重新开始（Game Over 后） | `Space` |
+| Move (hop) | ↑ ↓ ← → |
+| Area attack | `Space` |
+| Restart (after Game Over) | `Space` |
 
-**规则**
-- 每 10 秒 +1 分（生存得分）
-- 每击杀 1 个敌人 +10 分
-- 被任何敌人碰到即 Game Over
-- 分数越高，敌人刷新越快、移动越快——但 Tode 的速度和攻击范围也会小幅提升（敌人成长略快于玩家）
+**Rules**
 
-## 技术栈
+- **+1 point** for every 10 seconds survived
+- **+10 points** for each enemy defeated
+- Touching any enemy ends the run (Game Over)
+- The higher your score, the faster enemies spawn and move — but Tode's speed and attack range grow too (enemies scale slightly faster, so the challenge never fades)
 
-- **Three.js** 0.181 — 3D 渲染、GLTF 模型加载
-- **Vite** 7 — 开发服务器与打包
-- **JavaScript (ES Modules)** — 纯原生，无框架
+## Tech Stack
 
-## 项目结构
+- **Three.js** 0.181 — 3D rendering, GLTF model loading
+- **Vite** 7 — dev server and production bundling
+- **JavaScript (ES Modules)** — no framework
+
+## Project Structure
 
 ```
-game/
-├── index.html               入口页面
-├── public/
-│   ├── models/              3D 模型（tode / enemy / small_house）
-│   └── tode.svg             网站图标
-└── src/
-    ├── main.js              主入口：场景装配 + 游戏循环
-    ├── style.css            计分 UI 与 Game Over 遮罩样式
-    └── components/
-        ├── Camera.js        跟随玩家的透视相机
-        ├── Renderer.js      WebGL 渲染器
-        ├── Player.js        Tode：输入队列 + 跳跃动画
-        ├── Enemy.js         敌人：四角生成 + 追踪玩家
-        ├── Map.js           棋盘格地面
-        ├── House.js         随机房屋障碍物 + 碰撞
-        ├── Attack.js        范围攻击 + 冷却 + 视觉反馈
-        ├── Score.js         计分逻辑与顶部 UI
-        └── Difficulty.js    随分数动态缩放难度
+src/
+├── main.js              entry: scene assembly + game loop
+├── style.css            score UI and Game Over overlay
+└── components/
+    ├── Camera.js        perspective camera following the player
+    ├── Renderer.js      WebGL renderer
+    ├── Player.js        input queue + parabolic hop movement
+    ├── Enemy.js         corner spawning + player tracking
+    ├── Map.js           checkerboard ground
+    ├── House.js         random house obstacles + collision
+    ├── Attack.js        area attack + cooldown + visual ring
+    ├── Score.js         scoring logic and top-of-screen UI
+    └── Difficulty.js    dynamic difficulty scaling
 ```
 
-## 核心实现要点
+## Implementation Highlights
 
-**跳跃式移动**：每次移动不是瞬移，而是用进度值 `t ∈ [0,1]` 驱动；水平位置线性插值，垂直高度用 `Math.sin(t * π)` 生成抛物线弧线，落地时高度归零。
+**Hop-based movement** — Each move is not a teleport: a progress value `t ∈ [0, 1]` drives the hop. Horizontal position is linearly interpolated, while height follows `Math.sin(t · π)` to produce a parabolic arc that lands back on the ground.
 
-**碰撞检测**：不使用包围盒（对圆润角色太粗糙），而是用「最小距离常量」做圆形碰撞判定，并区分敌人-敌人、敌人-玩家、实体-房屋三类规则。
+**Collision detection** — Instead of bounding boxes (too coarse for rounded characters), collision uses a minimum-distance constant, with separate rules for enemy–enemy, enemy–player, and entity–house interactions.
 
-**动态难度**：由当前分数推出难度因子 `1 + score × 0.02`（上限 4），线性缩放刷新间隔、移动速度、攻击冷却与范围；敌人参数增幅刻意略高于玩家，保证挑战始终存在。
+**Dynamic difficulty** — A difficulty factor `1 + score × 0.02` (capped at 4) linearly scales spawn delay, movement speed, attack cooldown and attack range. Enemy parameters are deliberately tuned to scale slightly faster than the player's, so the challenge never fades.
 
-**AI 辅助开发**：整个项目在 WebStorm 中使用 JetBrains Junie（AI Coding Agent）协作完成，由开发者负责拆解需求、审查生成代码、调参与验证效果。
+**AI-assisted development** — The project was built in WebStorm in collaboration with JetBrains Junie, an AI coding agent. The developer defined the requirements, reviewed the generated code, tuned the parameters, and verified the results at every step.
 
-## 本地运行
+## Run Locally
 
 ```bash
-cd game
 npm install
-npm run dev      # 开发服务器 → http://localhost:5173
-npm run build    # 生产构建 → dist/
+npm run dev      # dev server → http://localhost:5173
+npm run build    # production build → dist/
 ```
 
-## 素材致谢
+## Credits
 
-- `enemy.glb` — Armabee Evolved by Quaternius（Public Domain）via [Poly Pizza](https://poly.pizza/m/GcttdvsqsQ)
-- `small_house.glb` — Small House by Jarlan Perez（CC-BY）via [Poly Pizza](https://poly.pizza/m/053kskrV4U_)
-- 课程与 `tode.glb` — [JetBrains Academy](https://academy.jetbrains.com/course/30327)
+- `enemy.glb` — Armabee Evolved by Quaternius (Public Domain) via [Poly Pizza](https://poly.pizza/m/GcttdvsqsQ)
+- `small_house.glb` — Small House by Jarlan Perez (CC-BY) via [Poly Pizza](https://poly.pizza/m/053kskrV4U_)
+- Course and `tode.glb` — [JetBrains Academy](https://academy.jetbrains.com/course/30327)

@@ -72,7 +72,9 @@ export class Player {
   load() {
     const loader = new GLTFLoader();
 
-    loader.load('/models/tode.glb', (gltf) => {
+    // Resolve against Vite's base URL so the asset loads correctly both in
+    // dev (/) and when deployed under a sub-path (e.g. GitHub Pages).
+    loader.load(`${import.meta.env.BASE_URL}models/tode.glb`, (gltf) => {
       const model = gltf.scene;
 
       // The asset is authored "lying down" for a Y-up world; rotate it into

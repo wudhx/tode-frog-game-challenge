@@ -1,17 +1,81 @@
-# Build a Game with an AI Coding Agent
-[![official JetBrains project](http://jb.gg/badges/official.svg)](https://confluence.jetbrains.com/display/ALL/JetBrains+on+GitHub) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-<a href="https://www.coursera.org/learn/jb-build-game-with-ai-agent/" target="_blank">
-<img src="https://img.shields.io/badge/Coursera-0056D2?style=for-the-badge&logo=Coursera&logoColor=white&style=flat" alt="Course%20catalog"></a>
-<a href="https://plugins.jetbrains.com/plugin/30327-build-a-game-with-ai-coding-agent/versions" target="_blank">
-<img src="https://img.shields.io/badge/dynamic/yaml?query=%24.course_version&url=https://raw.githubusercontent.com/jetbrains-academy/game-course/refs/heads/main/course-remote-info.yaml&logo=jetbrains&logoColor=FC801D&label=Marketplace&color=6b59fe&style=flat&prefix=v" alt="Marketplace"></a>
+# Tode the Frog — 3D Browser Survival Game
 
-Build a 3D browser game step by step – with the help of an AI coding agent.
+> Submission for the **JetBrains Academy "Build Your Game Challenge"** (October 2026)
 
-In this project-based course, you'll plan, build, and polish a complete game inside IDE, using AI coding agents to turn ideas into working code. Follow the story of Tode the Frog, or customize the visuals and make the game your own. No grades – just hands-on building and your creativity.
+A 3D survival game built with **Three.js**. Guide Tode the Frog through waves of monsters: hop to dodge, unleash an area-of-effect shockwave to clear a path, and survive as long as you can for a higher score.
 
-## Want to know more?
-If you have questions about the course or the tasks, or if you find any errors, feel free to ask questions and participate 
-in discussions within the repository [issues](https://github.com/jetbrains-academy/game-course/issues).
+**▶ Play online:** https://wudhx.github.io/tode-frog-game-challenge/
 
-## Contribution
-Please be sure to review the [project's contributing guidelines](https://github.com/jetbrains-academy/.github/blob/main/contributing_guidelines.md) to learn how to help the project.
+## Gameplay
+
+| Action | Key |
+|---|---|
+| Move (hop) | ↑ ↓ ← → |
+| Area attack | `Space` |
+| Restart (after Game Over) | `Space` |
+
+**Rules**
+
+- **+1 point** for every 10 seconds survived
+- **+10 points** for each enemy defeated
+- Touching any enemy ends the run (Game Over)
+- The higher your score, the faster enemies spawn and move — but Tode's speed and attack range grow too (enemies scale slightly faster, so the challenge never fades)
+
+## Tech Stack
+
+- **Three.js** 0.181 — 3D rendering, GLTF model loading
+- **Vite** 7 — dev server and production bundling
+- **JavaScript (ES Modules)** — no framework
+
+## Project Structure
+
+```
+game/
+├── index.html               entry page
+├── vite.config.js           build config (GitHub Pages base path)
+├── public/
+│   ├── models/              3D models (tode / enemy / small_house)
+│   └── tode.svg             favicon
+└── src/
+    ├── main.js              entry: scene assembly + game loop
+    ├── style.css            score UI and Game Over overlay
+    └── components/
+        ├── Camera.js        perspective camera following the player
+        ├── Renderer.js      WebGL renderer
+        ├── Player.js        input queue + parabolic hop movement
+        ├── Enemy.js         corner spawning + player tracking
+        ├── Map.js           checkerboard ground
+        ├── House.js         random house obstacles + collision
+        ├── Attack.js        area attack + cooldown + visual ring
+        ├── Score.js         scoring logic and top-of-screen UI
+        └── Difficulty.js    dynamic difficulty scaling
+```
+
+## Implementation Highlights
+
+**Hop-based movement** — Each move is not a teleport: a progress value `t ∈ [0, 1]` drives the hop. Horizontal position is linearly interpolated, while height follows `Math.sin(t · π)` to produce a parabolic arc that lands back on the ground.
+
+**Collision detection** — Instead of bounding boxes (too coarse for rounded characters), collision uses a minimum-distance constant, with separate rules for enemy–enemy, enemy–player, and entity–house interactions.
+
+**Dynamic difficulty** — A difficulty factor `1 + score × 0.02` (capped at 4) linearly scales spawn delay, movement speed, attack cooldown and attack range. Enemy parameters are deliberately tuned to scale slightly faster than the player's, so the challenge never fades.
+
+**AI-assisted development** — The project was built in WebStorm in collaboration with JetBrains Junie, an AI coding agent. The developer defined the requirements, reviewed the generated code, tuned the parameters, and verified the results at every step.
+
+## Run Locally
+
+```bash
+cd game
+npm install
+npm run dev      # dev server → http://localhost:5173
+npm run build    # production build → dist/
+```
+
+## Deployment
+
+Pushing to `main` triggers a GitHub Actions workflow that builds the game and publishes it to GitHub Pages automatically.
+
+## Credits
+
+- `enemy.glb` — Armabee Evolved by Quaternius (Public Domain) via [Poly Pizza](https://poly.pizza/m/GcttdvsqsQ)
+- `small_house.glb` — Small House by Jarlan Perez (CC-BY) via [Poly Pizza](https://poly.pizza/m/053kskrV4U_)
+- Course and `tode.glb` — [JetBrains Academy](https://academy.jetbrains.com/course/30327)
