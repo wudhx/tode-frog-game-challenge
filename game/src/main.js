@@ -98,7 +98,7 @@ function resetGame() {
   player.group.visible = true;
   player.group.position.copy(PLAYER_START);
   player.group.position.z = 0;
-  player.group.rotation.z = 0;
+  player.yaw.rotation.z = 0;
   player.controlsEnabled = true;
   player.stop();
 

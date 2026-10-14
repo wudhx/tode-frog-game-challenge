@@ -27,10 +27,17 @@ export class Player {
   constructor(scene) {
     this.scene = scene;
 
-    // The movable entity in world space.
+    // The movable entity in world space. The camera rides along with THIS
+    // group, so it must never be rotated — spinning it would spin the whole
+    // view and make the controls feel like they only work in one direction.
     this.group = new THREE.Group();
     this.group.position.set(0, 0, 0);
     scene.add(this.group);
+
+    // Facing pivot. Only the model is parented here, so turning the hero
+    // towards its travel direction never disturbs the camera.
+    this.yaw = new THREE.Group();
+    this.group.add(this.yaw);
 
     // Reference to the raw loaded model (rotated/offset independently).
     this.model = null;
@@ -91,7 +98,7 @@ export class Player {
       model.position.z -= box.min.z;
 
       this.model = model;
-      this.group.add(model);
+      this.yaw.add(model);
       this.loaded = true;
     });
   }
@@ -167,8 +174,9 @@ export class Player {
 
     this.group.position.set(x, y, z);
 
-    // Smoothly swing the model to face the travel direction.
-    this.group.rotation.z = state.rotation;
+    // Smoothly swing the model to face the travel direction. This turns the
+    // yaw pivot, NOT the group the camera is attached to.
+    this.yaw.rotation.z = state.rotation;
 
     if (state.progress >= 1) {
       this.group.position.z = 0;
