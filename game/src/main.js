@@ -162,23 +162,27 @@ function playerHitsEnemy() {
 }
 
 /**
- * Checks whether a proposed position is clear of walls and other enemies.
+ * Checks whether an enemy may stand at the given ground coordinates.
  *
- * @param {THREE.Vector3} position The desired position.
- * @param {import('./components/Enemy.js').Enemy | null} self The mover itself.
- * @param {number} cutoff Minimum distance that counts as a collision.
- * @returns {boolean} True if the position is blocked.
+ * Enemies respect walls and each other's personal space, but are never
+ * blocked by the player — see the movement loop for why that matters.
+ *
+ * @param {number} x Candidate X coordinate.
+ * @param {number} y Candidate Y coordinate.
+ * @param {import('./components/Enemy.js').Enemy} self The moving enemy.
+ * @returns {boolean} True if the spot is free.
  */
-function isBlocked(position, self, cutoff) {
-  // Walls first.
-  if (collidesWithHouse(position, houses, ENEMY_HOUSE_DISTANCE)) return true;
+function canEnemyStep(x, y, self) {
+  // Walls block movement.
+  const probe = new THREE.Vector3(x, y, 0);
+  if (collidesWithHouse(probe, houses, ENEMY_HOUSE_DISTANCE)) return false;
 
-  // Then other enemies.
-  return enemies.some((other) => {
+  // Other enemies block movement.
+  return !enemies.some((other) => {
     if (other === self) return false;
-    const dx = other.position.x - position.x;
-    const dy = other.position.y - position.y;
-    return Math.sqrt(dx * dx + dy * dy) < cutoff;
+    return (
+      Math.hypot(other.position.x - x, other.position.y - y) < ENEMY_HIT_DISTANCE
+    );
   });
 }
 
@@ -255,28 +259,26 @@ renderer.setAnimationLoop(() => {
     if (dir.lengthSq() < 1e-6) return;
     dir.normalize();
 
+    // Face the player whether or not the step below succeeds.
+    enemy.group.rotation.z = Math.atan2(dir.y, dir.x);
+
     const step = enemy.speed * delta;
-    const nextX = current.x + dir.x * step;
-    const nextY = current.y + dir.y * step;
+    const dx = dir.x * step;
+    const dy = dir.y * step;
 
-    // Compare against the *proposed* position when checking the player.
-    const probe = new THREE.Vector3(nextX, nextY, 0);
-    const tooCloseToPlayer =
-      Math.hypot(player.position.x - nextX, player.position.y - nextY) <
-      PLAYER_HIT_DISTANCE;
-    const tooCloseToHouse = collidesWithHouse(probe, houses, ENEMY_HOUSE_DISTANCE);
-    const tooCloseToEnemy = enemies.some((other) => {
-      if (other === enemy) return false;
-      return (
-        Math.hypot(other.position.x - nextX, other.position.y - nextY) <
-        ENEMY_HIT_DISTANCE
-      );
-    });
-
-    if (!tooCloseToEnemy && !tooCloseToHouse && !tooCloseToPlayer) {
-      current.x = nextX;
-      current.y = nextY;
-      enemy.group.rotation.z = Math.atan2(dir.y, dir.x);
+    // Enemies are deliberately NOT blocked by the player. If they were, they
+    // would stall just outside the kill radius (distance ~45) and the run
+    // could never end. Letting them close the gap is what makes the
+    // "Game Over" check fire reliably.
+    if (canEnemyStep(current.x + dx, current.y + dy, enemy)) {
+      current.x += dx;
+      current.y += dy;
+    } else if (canEnemyStep(current.x + dx, current.y, enemy)) {
+      // Slide along X to walk around a wall or a crowded neighbour.
+      current.x += dx;
+    } else if (canEnemyStep(current.x, current.y + dy, enemy)) {
+      // Slide along Y instead.
+      current.y += dy;
     }
   });
 

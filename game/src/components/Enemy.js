@@ -5,18 +5,20 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 // Tuning constants
 // ---------------------------------------------------------------------------
 /** Base delay between enemy spawns, in seconds. */
-export const ENEMY_SPAWN_DELAY = 3;
+export const ENEMY_SPAWN_DELAY = 2.5;
 /** Base enemy movement speed (world units per second). */
-export const ENEMY_SPEED = 30;
+export const ENEMY_SPEED = 45;
 /** Uniform scale applied to the enemy model. */
 export const ENEMY_SCALE = 5;
 
-// The four corners of the map, in world coordinates.
+// The four corners of the map, in world coordinates. Kept inside the
+// playfield but outside the camera's initial view, so monsters walk into
+// sight within a few seconds instead of taking 20 to cross the map.
 export const SPAWN_POINTS = [
-  new THREE.Vector2(-400, 400),
-  new THREE.Vector2(400, 400),
-  new THREE.Vector2(-400, -400),
-  new THREE.Vector2(400, -400),
+  new THREE.Vector2(-260, 260),
+  new THREE.Vector2(260, 260),
+  new THREE.Vector2(-260, -260),
+  new THREE.Vector2(260, -260),
 ];
 
 // A single shared loader & template, so the GLB is only fetched once.

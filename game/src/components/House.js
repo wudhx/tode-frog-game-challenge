@@ -17,21 +17,31 @@ const PLAYER_KEEPOUT = TILE_SIZE * 2;
  * @returns {THREE.Object3D} The positioned clone.
  */
 function placeHouse(template, position) {
+  // Outer pivot carries the horizontal facing (rotation around the world Z
+  // axis). The model itself only carries the Y-up -> Z-up correction. Keeping
+  // them on separate objects stops the two rotations from interfering with
+  // each other (which made the houses lean over).
+  const pivot = new THREE.Group();
+
   const house = template.clone(true);
 
   // Authored Y-up; rotate into our Z-up world.
   house.rotation.x = Math.PI / 2;
 
+  pivot.add(house);
+
+  // Measure the upright model and drop it so its lowest point sits on Z = 0.
+  pivot.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(pivot);
+  house.position.z -= box.min.z;
+
   // Random 90-degree turns so the neighbourhood doesn't look copy-pasted.
-  house.rotation.z = Math.floor(Math.random() * 4) * (Math.PI / 2);
+  // Rotating the pivot around Z is a pure yaw, so the house stays upright.
+  pivot.rotation.z = Math.floor(Math.random() * 4) * (Math.PI / 2);
 
-  house.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(house);
+  pivot.position.set(position.x, position.y, 0);
 
-  // Drop the house so its lowest point sits exactly on Z = 0.
-  house.position.set(position.x, position.y, -box.min.z);
-
-  return house;
+  return pivot;
 }
 
 /**

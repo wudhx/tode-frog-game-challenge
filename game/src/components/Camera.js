@@ -9,13 +9,14 @@ import * as THREE from 'three';
  */
 export function createCamera(player) {
   const camera = new THREE.PerspectiveCamera(
-    30,                                          // field of view
+    34,                                          // field of view
     window.innerWidth / window.innerHeight,      // aspect ratio
     0.1,                                         // near clipping plane
     9000                                         // far clipping plane
   );
 
-  camera.position.set(300, -300, 300);
+  // Pulled back from the original 300 so more of the map is visible at once.
+  camera.position.set(420, -420, 420);
   // Z-up coordinate system: the "up" direction is the Z axis.
   camera.up.set(0, 0, 1);
   camera.lookAt(0, 0, 0);
