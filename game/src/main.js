@@ -8,6 +8,7 @@ import { addHouses, collidesWithHouse } from './components/House.js';
 import { Attack } from './components/Attack.js';
 import { Score } from './components/Score.js';
 import { sound } from './components/Sound.js';
+import { PowerUpManager } from './components/PowerUp.js';
 import { scaledParameters } from './components/Difficulty.js';
 import './style.css';
 
@@ -73,6 +74,19 @@ const camera = createCamera(player.group);
 
 const score = new Score();
 const attack = new Attack(scene, player);
+const powerUps = new PowerUpManager(scene);
+
+// ---------------------------------------------------------------------------
+// On-screen controls reminder
+// ---------------------------------------------------------------------------
+const hint = document.createElement('div');
+hint.className = 'hint';
+hint.innerHTML = [
+  '<div><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd> hop around</div>',
+  '<div><kbd>Space</kbd> tongue blast</div>',
+  '<div><kbd>M</kbd> mute sound</div>',
+].join('');
+document.body.appendChild(hint);
 
 /** Currently active enemies. */
 let enemies = [];
@@ -130,6 +144,7 @@ function resetGame() {
   score.reset();
   attack.enabled = true;
   attack.reset();
+  powerUps.reset();
 
   if (gameOverOverlay) {
     gameOverOverlay.style.display = 'none';
@@ -216,6 +231,22 @@ function canEnemyStep(x, y, self) {
   });
 }
 
+/**
+ * Decides whether a power-up may be dropped at the given ground coordinates.
+ *
+ * @param {number} x Candidate X.
+ * @param {number} y Candidate Y.
+ * @returns {boolean} True if the spot is clear.
+ */
+function isPowerUpSpotFree(x, y) {
+  const probe = new THREE.Vector3(x, y, 0);
+  if (collidesWithHouse(probe, houses, PLAYER_HOUSE_DISTANCE)) return false;
+
+  // Never drop a pickup right under the hero's feet — that would be a
+  // freebie instead of a reward for exploring.
+  return Math.hypot(x - player.position.x, y - player.position.y) > TILE_SIZE * 1.5;
+}
+
 // ---------------------------------------------------------------------------
 // Resize handling
 // ---------------------------------------------------------------------------
@@ -244,9 +275,14 @@ renderer.setAnimationLoop(() => {
 
   // --- Difficulty scaling -------------------------------------------------
   const params = scaledParameters(score.value);
-  player.setMoveDuration(params.playerMoveDuration);
+
+  // Active power-up effects. Read before movement so the hero benefits from
+  // them the instant they are collected (collection resolves further down).
+  const boosts = powerUps.multipliers;
+
+  player.setMoveDuration(params.playerMoveDuration * boosts.hopDuration);
   attack.cooldownDuration = params.attackCooldown;
-  attack.radius = params.attackRadius;
+  attack.radius = params.attackRadius * boosts.attackRadius;
 
   // --- Player movement ----------------------------------------------------
   // The hero may not hop into a wall, nor off the edge of the board. Clamping
@@ -255,6 +291,10 @@ renderer.setAnimationLoop(() => {
   player.isBlocked = (target) => collidesWithHouse(target, houses, PLAYER_HOUSE_DISTANCE);
   player.confine = clampToPlayfield;
   player.update(delta);
+
+  // --- Power-ups ----------------------------------------------------------
+  // Resolved after movement so a hop that lands on a pickup collects it.
+  powerUps.update(delta, player.position, isPowerUpSpotFree);
 
   // --- Attack lifecycle ---------------------------------------------------
   attack.update(delta);
@@ -291,8 +331,9 @@ renderer.setAnimationLoop(() => {
 
   // --- Enemies ------------------------------------------------------------
   enemies.forEach((enemy) => {
-    // Speed scales with difficulty, then with the species' own pace.
-    enemy.setBaseSpeed(params.enemySpeed);
+    // Speed scales with difficulty, the species' own pace, and any active
+    // freeze effect.
+    enemy.setBaseSpeed(params.enemySpeed * boosts.enemySpeed);
     // Flap the wings and animate any damage feedback.
     enemy.animate(delta);
 
@@ -334,7 +375,8 @@ renderer.setAnimationLoop(() => {
   score.addSurvivalPoints(delta);
 
   // --- Lose condition (highest priority) ----------------------------------
-  if (playerHitsEnemy()) {
+  // A shield power-up lets the hero shrug off a touch.
+  if (!boosts.shielded && playerHitsEnemy()) {
     showGameOver();
   }
 
