@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { sound } from './Sound.js';
 
 // ---------------------------------------------------------------------------
 // Attack tuning constants
@@ -77,6 +78,8 @@ export class Attack {
     this.ring.position.y = this.player.position.y;
     this.ring.visible = true;
     this.visualTimer = ATTACK_VISUAL_DURATION;
+
+    sound.attack();
 
     return true;
   }

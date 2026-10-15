@@ -7,6 +7,7 @@ import { Map, TILE_COUNT, TILE_SIZE } from './components/Map.js';
 import { addHouses, collidesWithHouse } from './components/House.js';
 import { Attack } from './components/Attack.js';
 import { Score } from './components/Score.js';
+import { sound } from './components/Sound.js';
 import { scaledParameters } from './components/Difficulty.js';
 import './style.css';
 
@@ -107,6 +108,8 @@ function showGameOver() {
   player.controlsEnabled = false;
   player.stop();
   attack.enabled = false;
+
+  sound.gameOver();
 }
 
 /**
@@ -145,6 +148,12 @@ window.addEventListener('keydown', (event) => {
     event.preventDefault();
     resetGame();
   }
+});
+
+// M toggles all sound effects.
+window.addEventListener('keydown', (event) => {
+  if (event.code !== 'KeyM') return;
+  sound.muted = !sound.muted;
 });
 
 // ---------------------------------------------------------------------------
@@ -257,6 +266,9 @@ renderer.setAnimationLoop(() => {
         score.addKillPoints();
       });
       enemies = enemies.filter((enemy) => !hit.includes(enemy));
+
+      // One chirp per attack, no matter how many flies were caught.
+      sound.kill();
     }
   }
   attackWasActive = attackActive;

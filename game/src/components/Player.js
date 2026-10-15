@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { sound } from './Sound.js';
 
 // ---------------------------------------------------------------------------
 // Movement tuning constants
@@ -183,6 +184,9 @@ export class Player {
         this.moveState.active = false;
         return;
       }
+
+      // The hop is confirmed — let it be heard.
+      sound.jump();
     }
 
     const state = this.moveState;
