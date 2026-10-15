@@ -36,9 +36,12 @@ export class Score {
 
   /**
    * Awards points for a defeated enemy.
+   *
+   * @param {number} [points] Reward for this kill. Different insect species
+   *   are worth different amounts; defaults to the standard kill value.
    */
-  addKillPoints() {
-    this.value += this.SCORE_PER_KILL;
+  addKillPoints(points = this.SCORE_PER_KILL) {
+    this.value += points;
     this.render();
   }
 

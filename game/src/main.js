@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { createCamera } from './components/Camera.js';
 import { createRenderer } from './components/Renderer.js';
 import { Player } from './components/Player.js';
-import { Enemy, SPAWN_POINTS } from './components/Enemy.js';
+import { Enemy, SPAWN_POINTS, pickEnemyType } from './components/Enemy.js';
 import { Map, TILE_COUNT, TILE_SIZE } from './components/Map.js';
 import { addHouses, collidesWithHouse } from './components/House.js';
 import { Attack } from './components/Attack.js';
@@ -162,12 +162,15 @@ window.addEventListener('keydown', (event) => {
 /**
  * Spawns one enemy at a random corner of the map.
  *
- * @param {number} [speed] Initial speed for the new monster.
+ * The species is chosen from the current score, so the swarm starts out as
+ * plain flies and gradually picks up mosquitoes, bees and armoured beetles.
+ *
+ * @param {number} [speed] Initial base speed for the new insect.
  */
 function spawnEnemy(speed) {
   const point = SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
-  const enemy = new Enemy(scene, point);
-  if (typeof speed === 'number') enemy.speed = speed;
+  const enemy = new Enemy(scene, point, pickEnemyType(score.value));
+  if (typeof speed === 'number') enemy.setBaseSpeed(speed);
   enemies.push(enemy);
 }
 
@@ -261,14 +264,20 @@ renderer.setAnimationLoop(() => {
   if (attackActive && !attackWasActive) {
     const hit = attack.enemiesInRange(enemies);
     if (hit.length > 0) {
-      hit.forEach((enemy) => {
-        enemy.dispose();
-        score.addKillPoints();
-      });
-      enemies = enemies.filter((enemy) => !hit.includes(enemy));
+      // Armoured insects can shrug off a hit, so only the ones that actually
+      // ran out of hit points leave the board.
+      const destroyed = hit.filter((enemy) => enemy.takeHit());
 
-      // One chirp per attack, no matter how many flies were caught.
-      sound.kill();
+      if (destroyed.length > 0) {
+        destroyed.forEach((enemy) => {
+          enemy.dispose();
+          score.addKillPoints(enemy.type.points);
+        });
+        enemies = enemies.filter((enemy) => !destroyed.includes(enemy));
+
+        // One chirp per attack, no matter how many insects were caught.
+        sound.kill();
+      }
     }
   }
   attackWasActive = attackActive;
@@ -282,7 +291,10 @@ renderer.setAnimationLoop(() => {
 
   // --- Enemies ------------------------------------------------------------
   enemies.forEach((enemy) => {
-    enemy.speed = params.enemySpeed;
+    // Speed scales with difficulty, then with the species' own pace.
+    enemy.setBaseSpeed(params.enemySpeed);
+    // Flap the wings and animate any damage feedback.
+    enemy.animate(delta);
 
     const current = enemy.position;
     const dir = new THREE.Vector2(
