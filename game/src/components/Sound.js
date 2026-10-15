@@ -93,9 +93,9 @@ class Sound {
   }
 
   /** Plays a short arpeggio from a list of frequencies. */
-  arpeggio(freqs, { step = 0.08, duration = 0.14, type = 'sine', gain = 0.7 } = {}) {
+  arpeggio(freqs, { step = 0.08, duration = 0.14, type = 'sine', gain = 0.7, offset = 0 } = {}) {
     freqs.forEach((freq, index) => {
-      this.tone({ freq, duration, type, gain, delay: index * step });
+      this.tone({ freq, duration, type, gain, delay: offset + index * step });
     });
   }
 
@@ -131,13 +131,19 @@ class Sound {
     this.arpeggio([523, 659, 784], { step: 0.07, duration: 0.13, type: 'sine', gain: 0.5 });
   }
 
-  /** A celebratory fanfare for beating the previous best score. */
-  newBest() {
+  /**
+   * A celebratory fanfare for beating the previous best score.
+   *
+   * @param {number} [offset] Seconds to wait, so it can follow the
+   *   game-over sting instead of colliding with it.
+   */
+  newBest(offset = 0) {
     this.arpeggio([523, 659, 784, 1047, 1319], {
       step: 0.09,
       duration: 0.16,
       type: 'triangle',
       gain: 0.55,
+      offset,
     });
   }
 }

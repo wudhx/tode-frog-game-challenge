@@ -7,6 +7,7 @@ import { Map, TILE_COUNT, TILE_SIZE } from './components/Map.js';
 import { addHouses, collidesWithHouse } from './components/House.js';
 import { Attack } from './components/Attack.js';
 import { Score } from './components/Score.js';
+import { HighScores } from './components/HighScores.js';
 import { sound } from './components/Sound.js';
 import { PowerUpManager } from './components/PowerUp.js';
 import { scaledParameters } from './components/Difficulty.js';
@@ -73,6 +74,7 @@ const player = new Player(scene);
 const camera = createCamera(player.group);
 
 const score = new Score();
+const highScores = new HighScores();
 const attack = new Attack(scene, player);
 const powerUps = new PowerUpManager(scene);
 
@@ -105,17 +107,57 @@ let gameState = 'playing';
 let gameOverOverlay = null;
 
 /**
- * Shows the "Game Over" overlay and freezes the world.
+ * Builds the end-of-run panel: final score, best-run table and restart
+ * prompt. Created once and reused for every subsequent run.
+ *
+ * @returns {HTMLElement} The overlay element.
+ */
+function buildGameOverOverlay() {
+  const overlay = document.createElement('div');
+  overlay.className = 'game-over';
+  overlay.innerHTML = [
+    '<div class="go-title">Game Over</div>',
+    '<div class="go-badge">New Best!</div>',
+    '<div class="go-score">Score <b>0</b></div>',
+    '<div class="go-board">',
+    '  <div class="go-board-title">Best runs</div>',
+    '  <ol></ol>',
+    '</div>',
+    '<div class="go-hint">Press SPACE to play again</div>',
+  ].join('');
+
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+/**
+ * Shows the "Game Over" overlay, records the run, and freezes the world.
  */
 function showGameOver() {
   gameState = 'game-over';
 
-  if (!gameOverOverlay) {
-    gameOverOverlay = document.createElement('div');
-    gameOverOverlay.className = 'game-over';
-    gameOverOverlay.textContent = 'Game Over';
-    document.body.appendChild(gameOverOverlay);
-  }
+  if (!gameOverOverlay) gameOverOverlay = buildGameOverOverlay();
+
+  // --- Record the run -----------------------------------------------------
+  const result = highScores.submit(score.value);
+
+  gameOverOverlay.querySelector('.go-score b').textContent = String(Math.floor(score.value));
+  gameOverOverlay.querySelector('.go-badge').style.display = result.isBest
+    ? 'inline-block'
+    : 'none';
+
+  // Rebuild the leaderboard rows from the freshly-saved table.
+  gameOverOverlay.querySelector('.go-board ol').innerHTML = highScores.entries
+    .map(
+      (entry, index) =>
+        `<li${index === 0 ? ' class="top"' : ''}>` +
+        `<span class="rank">${index + 1}</span>` +
+        `<span class="val">${entry.score}</span>` +
+        `<span class="date">${entry.date}</span>` +
+        '</li>'
+    )
+    .join('');
+
   gameOverOverlay.style.display = 'flex';
 
   player.group.visible = false;
@@ -124,6 +166,8 @@ function showGameOver() {
   attack.enabled = false;
 
   sound.gameOver();
+  // Let the game-over sting land before the celebration kicks in.
+  if (result.isBest) sound.newBest(1.1);
 }
 
 /**

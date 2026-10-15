@@ -47,21 +47,121 @@ canvas.game {
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  gap: 18px;
-  background: rgba(10, 20, 12, 0.72);
+  gap: 14px;
+  padding: 24px;
+  background: rgba(10, 20, 12, 0.78);
   color: #ffffff;
-  font-size: 64px;
-  font-weight: 800;
-  letter-spacing: 2px;
+  text-align: center;
   z-index: 20;
   user-select: none;
 }
 
-.game-over::after {
-  content: 'Press SPACE to play again';
-  font-size: 18px;
-  font-weight: 500;
-  letter-spacing: 0.5px;
+.go-title {
+  font-size: 56px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  line-height: 1;
+}
+
+.go-badge {
+  display: none;
+  padding: 6px 18px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffd23f, #ff8c1a);
+  color: #3a2500;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  animation: go-pop 0.45s ease-out;
+}
+
+@keyframes go-pop {
+  from { transform: scale(0.6); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+
+.go-score {
+  font-size: 19px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.go-score b {
+  font-size: 30px;
+  color: #ffe066;
+  font-variant-numeric: tabular-nums;
+}
+
+.go-board {
+  width: min(360px, 86vw);
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.go-board-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.go-board ol {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.go-board li {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.go-board li.top {
+  color: #ffe066;
+  font-weight: 800;
+  opacity: 1;
+}
+
+.go-board .rank {
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  opacity: 0.5;
+}
+
+.go-board li.top .rank {
+  opacity: 1;
+}
+
+.go-board .val {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-align: left;
+}
+
+.go-board .date {
+  font-size: 12px;
+  opacity: 0.5;
+}
+
+.go-hint {
+  margin-top: 6px;
+  font-size: 16px;
+  font-weight: 600;
   opacity: 0.8;
 }
 
