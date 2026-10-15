@@ -69,6 +69,10 @@ export class Player {
     // Set by main.js each time a move begins.
     this.isBlocked = () => false;
 
+    // Hard backstop applied to every hop's landing spot, so the frog can
+    // never leave the board. Set by main.js.
+    this.confine = () => {};
+
     this.bindInput();
     this.load();
   }
@@ -139,6 +143,21 @@ export class Player {
     this.moveState.targetPosition.x += direction.x * JUMP_DISTANCE;
     this.moveState.targetPosition.y += direction.y * JUMP_DISTANCE;
 
+    // Keep the landing spot on the board. This is a clamp rather than a
+    // reject, so hopping straight into the edge simply stops at the edge
+    // instead of leaving the hero stranded in mid-hop limbo.
+    this.confine(this.moveState.targetPosition);
+
+    // If the clamped landing spot collapses onto the current position, there
+    // is nowhere to go — don't start a zero-length hop.
+    if (
+      Math.abs(this.moveState.targetPosition.x - this.group.position.x) < 1e-6 &&
+      Math.abs(this.moveState.targetPosition.y - this.group.position.y) < 1e-6
+    ) {
+      this.moveState.active = false;
+      return;
+    }
+
     // Face the direction of travel. atan2 gives 0 for +X and grows CCW.
     this.moveState.rotation = Math.atan2(direction.y, direction.x);
   }
@@ -154,6 +173,10 @@ export class Player {
       if (this.inputQueue.length === 0) return;
       const next = this.inputQueue.shift();
       this.startMove(next);
+
+      // startMove() bails out (leaving us idle) on a blocked or zero-length
+      // hop; on a blocked hop at the rim it may also have refused to move.
+      if (!this.moveState.active) return;
 
       // Reject the hop outright if the landing spot is inside a wall.
       if (this.isBlocked(this.moveState.targetPosition)) {
@@ -182,6 +205,9 @@ export class Player {
       this.group.position.z = 0;
       state.active = false;
     }
+
+    // Belt-and-braces: never let a single frame place the hero off-board.
+    this.confine(this.group.position);
   }
 
   /**

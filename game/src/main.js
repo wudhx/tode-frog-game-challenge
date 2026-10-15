@@ -3,7 +3,7 @@ import { createCamera } from './components/Camera.js';
 import { createRenderer } from './components/Renderer.js';
 import { Player } from './components/Player.js';
 import { Enemy, SPAWN_POINTS } from './components/Enemy.js';
-import { Map } from './components/Map.js';
+import { Map, TILE_COUNT, TILE_SIZE } from './components/Map.js';
 import { addHouses, collidesWithHouse } from './components/House.js';
 import { Attack } from './components/Attack.js';
 import { Score } from './components/Score.js';
@@ -21,6 +21,24 @@ const ENEMY_HIT_DISTANCE = 55;
 const PLAYER_HOUSE_DISTANCE = 70;
 /** Enemy vs. house: keep them from walking through walls. */
 const ENEMY_HOUSE_DISTANCE = 75;
+
+/**
+ * How far from the origin the hero may roam. The board is
+ * TILE_COUNT * TILE_SIZE wide, so this leaves a half-tile of ground in front
+ * of the invisible wall instead of letting the frog hop into empty space.
+ */
+const PLAYFIELD_HALF = (TILE_COUNT * TILE_SIZE) / 2 - TILE_SIZE;
+
+/**
+ * Clamps a ground position into the playfield. Used as a hard backstop so a
+ * hop can never carry the hero past the edge, no matter what triggered it.
+ *
+ * @param {THREE.Vector3} position Position to clamp, modified in place.
+ */
+function clampToPlayfield(position) {
+  position.x = THREE.MathUtils.clamp(position.x, -PLAYFIELD_HALF, PLAYFIELD_HALF);
+  position.y = THREE.MathUtils.clamp(position.y, -PLAYFIELD_HALF, PLAYFIELD_HALF);
+}
 
 // ---------------------------------------------------------------------------
 // Core three.js setup
@@ -219,8 +237,11 @@ renderer.setAnimationLoop(() => {
   attack.radius = params.attackRadius;
 
   // --- Player movement ----------------------------------------------------
-  player.isBlocked = (target) =>
-    collidesWithHouse(target, houses, PLAYER_HOUSE_DISTANCE);
+  // The hero may not hop into a wall, nor off the edge of the board. Clamping
+  // the landing spot (rather than only rejecting the hop) means a hero
+  // standing on the boundary stays put instead of building up illegal moves.
+  player.isBlocked = (target) => collidesWithHouse(target, houses, PLAYER_HOUSE_DISTANCE);
+  player.confine = clampToPlayfield;
   player.update(delta);
 
   // --- Attack lifecycle ---------------------------------------------------
@@ -280,6 +301,9 @@ renderer.setAnimationLoop(() => {
       // Slide along Y instead.
       current.y += dy;
     }
+
+    // Monsters hunt, but they stay on the board like everyone else.
+    clampToPlayfield(current);
   });
 
   // --- Scoring: survival --------------------------------------------------
@@ -289,6 +313,10 @@ renderer.setAnimationLoop(() => {
   if (playerHitsEnemy()) {
     showGameOver();
   }
+
+  // --- Final safety net ---------------------------------------------------
+  // Whatever the frame did, the hero ends it inside the board.
+  clampToPlayfield(player.group.position);
 
   renderer.render(scene, camera);
 });
