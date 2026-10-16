@@ -11,7 +11,12 @@
 // Base (starting) values — imported piecemeal by the systems that own them.
 // ---------------------------------------------------------------------------
 export const BASE_ENEMY_SPAWN_DELAY = 3;
-export const BASE_ENEMY_SPEED = 30;
+/**
+ * Raised from the original 30 to keep the pace right on the much larger
+ * board: insects now have roughly twice as far to travel before they reach
+ * the hero.
+ */
+export const BASE_ENEMY_SPEED = 52;
 export const BASE_PLAYER_MOVE_DURATION = 0.28;
 export const BASE_ATTACK_COOLDOWN = 1;
 export const BASE_ATTACK_RADIUS = 120;

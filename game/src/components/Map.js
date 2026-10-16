@@ -1,26 +1,38 @@
 import * as THREE from 'three';
 
 // Checkerboard colors, per the task specification.
-const DARK_GREEN = 0x228b22;
-const LIGHT_GREEN = 0x90ee90;
+const DARK_GREEN = '#228b22';
+const LIGHT_GREEN = '#90ee90';
 // Softer green for the decorative apron surrounding the board.
 const APRON_GREEN = 0x3f9c46;
 
 /** Size of a single floor tile, in world units. */
 export const TILE_SIZE = 100;
-/** How many tiles make up one side of the square board. */
-export const TILE_COUNT = 12;
+/**
+ * How many tiles make up one side of the square board.
+ *
+ * 30 x 30 = 3000 x 3000 world units. The original course board was 12 x 12,
+ * so this is 2.5x per side and 6.25x the area — enough room for the extra
+ * scenery and the gameplay systems still to come.
+ */
+export const TILE_COUNT = 30;
+/**
+ * Distance from the origin to the edge of the board. Everything that moves
+ * clamps to `BOARD_HALF - its own radius`, so bodies come to rest with their
+ * edge exactly on the painted boundary instead of stopping short of it.
+ */
+export const BOARD_HALF = (TILE_COUNT * TILE_SIZE) / 2;
 /**
  * How far the decorative apron extends beyond the board. The camera sits
- * ~420 units back with a 34° field of view, so from the far corner of the
- * board it can see roughly 1500 units past the last tile. 6000 leaves a very
+ * ~470 units back with a 36° field of view, so from the far corner of the
+ * board it can see roughly 1600 units past the last tile. This leaves a very
  * generous margin so no blank sky ever shows through at the rim.
  */
-export const APRON_SIZE = 6000;
+export const APRON_SIZE = 12000;
 
 /**
- * Builds the game map: a checkerboard ground plane plus a group that will
- * host obstacles such as houses.
+ * Builds the game map: a checkerboard ground plane plus groups that host the
+ * obstacles and the scenery.
  */
 export class Map {
   /**
@@ -54,29 +66,37 @@ export class Map {
 
   /**
    * Lays out the alternating-color checkerboard floor.
+   *
+   * The whole board is a single plane painted with a procedurally generated
+   * one-pixel-per-tile texture. That keeps an 18x18 board at one draw call
+   * instead of 324, which matters now that the map is 1.5x larger.
    */
   buildFloor() {
-    const half = (TILE_COUNT * TILE_SIZE) / 2;
-    const tileGeometry = new THREE.PlaneGeometry(TILE_SIZE, TILE_SIZE);
+    const canvas = document.createElement('canvas');
+    canvas.width = TILE_COUNT;
+    canvas.height = TILE_COUNT;
+    const ctx = canvas.getContext('2d');
 
     for (let row = 0; row < TILE_COUNT; row++) {
       for (let col = 0; col < TILE_COUNT; col++) {
-        const isDark = (row + col) % 2 === 0;
-        const material = new THREE.MeshStandardMaterial({
-          color: isDark ? DARK_GREEN : LIGHT_GREEN,
-          side: THREE.DoubleSide,
-        });
-
-        const tile = new THREE.Mesh(tileGeometry, material);
-        tile.position.set(
-          col * TILE_SIZE - half + TILE_SIZE / 2,
-          row * TILE_SIZE - half + TILE_SIZE / 2,
-          0
-        );
-
-        this.group.add(tile);
+        ctx.fillStyle = (row + col) % 2 === 0 ? DARK_GREEN : LIGHT_GREEN;
+        ctx.fillRect(col, row, 1, 1);
       }
     }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    // Nearest filtering keeps every tile edge crisp at any distance.
+    texture.magFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.NearestFilter;
+    texture.generateMipmaps = false;
+    texture.colorSpace = THREE.SRGBColorSpace;
+
+    const size = TILE_COUNT * TILE_SIZE;
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(size, size),
+      new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide })
+    );
+    this.group.add(floor);
   }
 
   /**

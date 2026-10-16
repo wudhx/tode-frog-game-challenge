@@ -39,6 +39,40 @@ canvas.game {
   vertical-align: middle;
 }
 
+/* --- Health hearts ------------------------------------------------------- */
+.health {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-width: 190px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  user-select: none;
+  pointer-events: none;
+  transition: transform 0.12s ease-out;
+}
+
+.heart {
+  display: flex;
+  line-height: 0;
+}
+
+/* A quick jolt while the hero is in their mercy window. */
+.health.is-hurt {
+  animation: heart-jolt 0.28s ease-out infinite alternate;
+}
+
+@keyframes heart-jolt {
+  from { transform: translateX(0); }
+  to   { transform: translateX(3px); }
+}
+
 /* --- Game over overlay --------------------------------------------------- */
 .game-over {
   position: fixed;

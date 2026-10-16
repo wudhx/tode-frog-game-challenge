@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { BOARD_HALF } from './Map.js';
 import { sound } from './Sound.js';
 
 // ---------------------------------------------------------------------------
@@ -28,7 +29,7 @@ export const POWERUP_TYPES = {
     label: 'Speed',
     blurb: 'Hop faster',
     detail: 'Hop cooldown cut to 55%, so you move almost twice as often.',
-    duration: 8,
+    duration: 12,
     color: 0xffd23f,
     multiplier: 0.55,
   },
@@ -36,8 +37,8 @@ export const POWERUP_TYPES = {
     key: 'shield',
     label: 'Shield',
     blurb: 'Invincible',
-    detail: 'Insects cannot end your run while the shield holds.',
-    duration: 6,
+    detail: 'Insects cannot hurt you while the shield holds.',
+    duration: 10,
     color: 0x4da6ff,
     multiplier: 1,
   },
@@ -45,8 +46,8 @@ export const POWERUP_TYPES = {
     key: 'range',
     label: 'Range',
     blurb: 'Bigger blast',
-    detail: 'Your tongue blast reaches 1.9x further.',
-    duration: 10,
+    detail: 'Your tongue blast reaches 1.9x further — the ring grows to match.',
+    duration: 14,
     color: 0xff8c1a,
     multiplier: 1.9,
   },
@@ -55,9 +56,29 @@ export const POWERUP_TYPES = {
     label: 'Freeze',
     blurb: 'Slow insects',
     detail: 'Every insect drops to 35% speed.',
-    duration: 6,
+    duration: 10,
     color: 0x8ee8ff,
     multiplier: 0.35,
+  },
+  heart: {
+    key: 'heart',
+    label: 'Heart',
+    blurb: 'Max health +1',
+    detail: 'Permanently adds a heart to your health bar, and refills one.',
+    duration: 0,
+    instant: true,
+    color: 0xe5484d,
+    multiplier: 1,
+  },
+  bomb: {
+    key: 'bomb',
+    label: 'Bomb',
+    blurb: 'Clear the sky',
+    detail: 'Detonates instantly, wiping out every insect on the board.',
+    duration: 0,
+    instant: true,
+    color: 0xb08cff,
+    multiplier: 1,
   },
 };
 
@@ -114,6 +135,32 @@ function buildIcon(cfg) {
       // A shockwave ring echoes the attack effect.
       const ring = new THREE.Mesh(new THREE.TorusGeometry(14, 4.5, 10, 22), solid);
       group.add(ring);
+      break;
+    }
+    case 'heart': {
+      // A chunky medical cross. Unlike a flat heart shape it reads clearly
+      // from every camera angle.
+      group.add(new THREE.Mesh(new THREE.BoxGeometry(26, 8, 8), solid));
+      group.add(new THREE.Mesh(new THREE.BoxGeometry(8, 8, 26), solid));
+      break;
+    }
+    case 'bomb': {
+      group.add(new THREE.Mesh(new THREE.SphereGeometry(14, 16, 12), solid));
+
+      // Fuse and spark, so it reads as a bomb rather than a plain ball.
+      const fuse = new THREE.Mesh(
+        new THREE.CylinderGeometry(2.5, 2.5, 11, 8),
+        new THREE.MeshStandardMaterial({ color: 0x6b5a3e, roughness: 0.85 })
+      );
+      fuse.position.z = 17;
+      group.add(fuse);
+
+      const spark = new THREE.Mesh(
+        new THREE.SphereGeometry(4, 10, 8),
+        new THREE.MeshBasicMaterial({ color: 0xffe066 })
+      );
+      spark.position.z = 23;
+      group.add(spark);
       break;
     }
     default: {
@@ -287,7 +334,9 @@ export class PowerUpManager {
       chip.dataset.type = key;
       chip.style.setProperty('--chip', `#${type.color.toString(16).padStart(6, '0')}`);
       // Hovering a chip repeats the full explanation.
-      chip.title = `${type.label} — ${type.detail} Lasts ${type.duration}s.`;
+      chip.title = type.instant
+        ? `${type.label} — ${type.detail}`
+        : `${type.label} — ${type.detail} Lasts ${type.duration}s.`;
 
       const name = document.createElement('span');
       name.className = 'effect-name';
@@ -315,7 +364,9 @@ export class PowerUpManager {
     this.toast.innerHTML = [
       `<div class="pickup-name" style="color:${hex}">${type.label} — ${type.blurb}</div>`,
       `<div class="pickup-detail">${type.detail}</div>`,
-      `<div class="pickup-duration">Active for ${type.duration} seconds</div>`,
+      type.instant
+        ? '<div class="pickup-duration">Instant effect</div>'
+        : `<div class="pickup-duration">Active for ${type.duration} seconds</div>`,
     ].join('');
 
     // Re-trigger the entrance animation even if a card is already on screen.
@@ -336,7 +387,7 @@ export class PowerUpManager {
    * @param {(x: number, y: number) => boolean} isFree Placement predicate.
    */
   spawn(isFree) {
-    const half = 420;
+    const half = BOARD_HALF - 150;
     for (let attempt = 0; attempt < 40; attempt++) {
       const x = THREE.MathUtils.randFloatSpread(half * 2);
       const y = THREE.MathUtils.randFloatSpread(half * 2);
@@ -354,8 +405,14 @@ export class PowerUpManager {
    * @param {number} delta Seconds since the previous frame.
    * @param {THREE.Vector3} playerPosition The hero's world position.
    * @param {(x: number, y: number) => boolean} isFree Placement predicate.
+   * @returns {Array<typeof POWERUP_TYPES[keyof typeof POWERUP_TYPES]>} Types
+   *   collected this frame that take effect immediately (Heart, Bomb). The
+   *   caller owns the systems they touch, so it applies them.
    */
   update(delta, playerPosition, isFree) {
+    /** @type {Array<typeof POWERUP_TYPES[keyof typeof POWERUP_TYPES]>} */
+    const collected = [];
+
     // --- Spawning ---------------------------------------------------------
     this.spawnTimer -= delta;
     if (this.spawnTimer <= 0) {
@@ -371,7 +428,15 @@ export class PowerUpManager {
       const dy = pickup.position.y - playerPosition.y;
       if (Math.hypot(dx, dy) <= PICKUP_RADIUS) {
         pickup.collected = true;
-        this.effects[pickup.typeKey] = pickup.type.duration;
+
+        // Timed pickups run on a countdown; instant ones are handed back to
+        // the caller, which owns the systems they affect.
+        if (pickup.type.instant) {
+          collected.push(pickup.type);
+        } else {
+          this.effects[pickup.typeKey] = pickup.type.duration;
+        }
+
         // Tell the player what they just picked up, and what it does.
         this.showPickupCard(pickup.type);
         sound.powerUp();
@@ -395,6 +460,7 @@ export class PowerUpManager {
     }
 
     this.renderHud();
+    return collected;
   }
 
   /** Mirrors the active effects into the HUD chips. */

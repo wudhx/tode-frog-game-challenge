@@ -1,13 +1,18 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { TILE_COUNT, TILE_SIZE } from './Map.js';
+import { BOARD_HALF, TILE_SIZE } from './Map.js';
 
 /** Uniform scale applied to the house model. */
 export const HOUSE_SCALE = 65;
 
+/** How many houses are scattered across the board. */
+const HOUSE_COUNT = 10;
+
 // Keep houses away from the very edge and from the player's start point.
-const SAFE_MARGIN = TILE_SIZE * 1.5;
-const PLAYER_KEEPOUT = TILE_SIZE * 2;
+const SAFE_MARGIN = TILE_SIZE * 2;
+const PLAYER_KEEPOUT = TILE_SIZE * 3;
+/** Minimum gap between two houses. */
+const HOUSE_SPACING = TILE_SIZE * 3;
 
 /**
  * Lays a single house model flat on the ground at the given XY position.
@@ -70,11 +75,11 @@ export async function addHouses(housesGroup, playerGroup) {
   const template = gltf.scene;
   template.scale.setScalar(HOUSE_SCALE);
 
-  const half = (TILE_COUNT * TILE_SIZE) / 2 - SAFE_MARGIN;
+  const half = BOARD_HALF - SAFE_MARGIN;
   const placed = [];
 
   let attempts = 0;
-  while (placed.length < 3 && attempts < 200) {
+  while (placed.length < HOUSE_COUNT && attempts < 800) {
     attempts++;
 
     const candidate = new THREE.Vector2(
@@ -87,7 +92,7 @@ export async function addHouses(housesGroup, playerGroup) {
 
     // Don't stack houses on each other.
     const tooClose = placed.some(
-      (p) => p.position.distanceTo(candidate) < TILE_SIZE * 1.2
+      (p) => p.position.distanceTo(candidate) < HOUSE_SPACING
     );
     if (tooClose) continue;
 
@@ -105,20 +110,24 @@ export async function addHouses(housesGroup, playerGroup) {
 }
 
 /**
- * Checks whether a candidate ground position is blocked by any house.
+ * Checks whether a candidate ground position overlaps any circular obstacle.
+ *
+ * Despite living in House.js this is the shared collision test for the whole
+ * game: houses, trees and bushes all contribute `{ position, radius }`
+ * records, and every mover is checked against the same list.
  *
  * @param {THREE.Vector3} position The desired next position.
- * @param {Array<{position: THREE.Vector2, radius: number}>} houses Placed
- *   house records, each carrying its own footprint radius.
+ * @param {Array<{position: THREE.Vector2, radius: number}>} obstacles Placed
+ *   obstacle records, each carrying its own footprint radius.
  * @param {number} padding Radius of the thing being moved (frog, insect…),
- *   added to the house radius so bodies stop when they touch, not when their
- *   centres meet.
- * @returns {boolean} True if the position collides with a house.
+ *   added to the obstacle radius so bodies stop when they touch, not when
+ *   their centres meet.
+ * @returns {boolean} True if the position collides with something.
  */
-export function collidesWithHouse(position, houses, padding) {
-  return houses.some((house) => {
-    const dx = position.x - house.position.x;
-    const dy = position.y - house.position.y;
-    return Math.hypot(dx, dy) < house.radius + padding;
+export function collidesWithObstacle(position, obstacles, padding) {
+  return obstacles.some((obstacle) => {
+    const dx = position.x - obstacle.position.x;
+    const dy = position.y - obstacle.position.y;
+    return Math.hypot(dx, dy) < obstacle.radius + padding;
   });
 }

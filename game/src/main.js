@@ -2,12 +2,14 @@ import * as THREE from 'three';
 import { createCamera } from './components/Camera.js';
 import { createRenderer } from './components/Renderer.js';
 import { Player } from './components/Player.js';
-import { Enemy, SPAWN_POINTS, pickEnemyType } from './components/Enemy.js';
-import { Map, TILE_COUNT, TILE_SIZE } from './components/Map.js';
-import { addHouses, collidesWithHouse } from './components/House.js';
+import { Enemy, pickEnemyType } from './components/Enemy.js';
+import { Map, BOARD_HALF, TILE_SIZE } from './components/Map.js';
+import { addHouses, collidesWithObstacle } from './components/House.js';
+import { Scenery } from './components/Scenery.js';
 import { Attack } from './components/Attack.js';
 import { Score } from './components/Score.js';
 import { HighScores } from './components/HighScores.js';
+import { Health } from './components/Health.js';
 import { sound } from './components/Sound.js';
 import { PowerUpManager } from './components/PowerUp.js';
 import { scaledParameters } from './components/Difficulty.js';
@@ -22,14 +24,6 @@ const PLAYER_HIT_DISTANCE = 45;
 const ENEMY_HIT_DISTANCE = 45;
 
 /**
- * How far from the origin anything may roam. The board is
- * TILE_COUNT * TILE_SIZE wide, so this stops at the *centre* of the outermost
- * tile: the hero can stand on the very last row of grass, but never hop off
- * the edge into empty space.
- */
-const PLAYFIELD_HALF = (TILE_COUNT * TILE_SIZE) / 2 - TILE_SIZE * 0.5;
-
-/**
  * Extra breathing room kept between a body and a house wall. Collision adds
  * the house's own measured radius to the mover's radius, so bodies stop when
  * they *touch* instead of when their centres meet — which is what made the
@@ -40,14 +34,20 @@ const WALL_CLEARANCE = 6;
 const POWERUP_WALL_CLEARANCE = 26;
 
 /**
- * Clamps a ground position into the playfield. Used as a hard backstop so a
- * hop can never carry the hero past the edge, no matter what triggered it.
+ * Clamps a ground position to the board.
+ *
+ * The limit is `BOARD_HALF - radius`, so a body comes to rest with its own
+ * edge exactly on the painted boundary. Clamping the *centre* to the board
+ * edge (or worse, to the last tile centre) is what left the frog stranded a
+ * visible distance from the rim.
  *
  * @param {THREE.Vector3} position Position to clamp, modified in place.
+ * @param {number} [radius] Radius of the body being clamped.
  */
-function clampToPlayfield(position) {
-  position.x = THREE.MathUtils.clamp(position.x, -PLAYFIELD_HALF, PLAYFIELD_HALF);
-  position.y = THREE.MathUtils.clamp(position.y, -PLAYFIELD_HALF, PLAYFIELD_HALF);
+function clampToBoard(position, radius = 0) {
+  const limit = Math.max(0, BOARD_HALF - radius);
+  position.x = THREE.MathUtils.clamp(position.x, -limit, limit);
+  position.y = THREE.MathUtils.clamp(position.y, -limit, limit);
 }
 
 // ---------------------------------------------------------------------------
@@ -67,11 +67,20 @@ scene.add(directionalLight);
 // ---------------------------------------------------------------------------
 const map = new Map(scene);
 
-/** Placed house records, filled in asynchronously. */
-let houses = [];
+/**
+ * Everything on the board that blocks movement: houses, trees and bushes.
+ * Each entry is `{ position, radius }`. Filled in once the models load.
+ */
+let obstacles = [];
+
+/** Scenery props, once loaded. Faded whenever they block the camera. */
+let scenery = null;
 
 addHouses(map.housesGroup, null).then((placed) => {
-  houses = placed;
+  // Scenery goes in after the houses so it can avoid dropping a tree inside
+  // one. Trees and bushes then join the same collision list.
+  scenery = new Scenery(scene, placed);
+  obstacles = [...placed, ...scenery.obstacles];
 });
 
 // ---------------------------------------------------------------------------
@@ -81,6 +90,7 @@ const player = new Player(scene);
 const camera = createCamera(player.group);
 
 const score = new Score();
+const health = new Health();
 const highScores = new HighScores();
 const attack = new Attack(scene, player);
 const powerUps = new PowerUpManager(scene);
@@ -188,11 +198,15 @@ function resetGame() {
   player.controlsEnabled = true;
   player.stop();
 
+  // Undo any blink left over from the final hit.
+  if (player.model) player.model.visible = true;
+
   enemies.forEach((enemy) => enemy.dispose());
   enemies = [];
   spawnTimer = 0;
 
   score.reset();
+  health.reset();
   attack.enabled = true;
   attack.reset();
   powerUps.reset();
@@ -226,7 +240,42 @@ window.addEventListener('keydown', (event) => {
 // Enemy spawning
 // ---------------------------------------------------------------------------
 /**
- * Spawns one enemy at a random corner of the map.
+ * Picks a spawn point on a ring around the hero.
+ *
+ * The course version spawned insects at the four map corners, which worked on
+ * a 12x12 board. On a 30x30 one that would mean a thirty-second wait before
+ * anything reached the player, so insects now appear just outside the
+ * camera's view instead.
+ *
+ * @returns {THREE.Vector2} A clear spot on the board.
+ */
+function pickSpawnPoint() {
+  for (let attempt = 0; attempt < 24; attempt++) {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = THREE.MathUtils.randFloat(660, 820);
+
+    const point = new THREE.Vector2(
+      player.position.x + Math.cos(angle) * distance,
+      player.position.y + Math.sin(angle) * distance
+    );
+
+    // Keep it on the board and out of the walls.
+    clampToBoard(point, 70);
+    if (collidesWithObstacle(new THREE.Vector3(point.x, point.y, 0), obstacles, 40)) {
+      continue;
+    }
+
+    return point;
+  }
+
+  // Fallback: straight outside the camera view, clamped to the board.
+  const fallback = new THREE.Vector2(player.position.x + 700, player.position.y);
+  clampToBoard(fallback, 70);
+  return fallback;
+}
+
+/**
+ * Spawns one insect just outside the hero's view.
  *
  * The species is chosen from the current score, so the swarm starts out as
  * plain flies and gradually picks up mosquitoes, bees and armoured beetles.
@@ -234,8 +283,7 @@ window.addEventListener('keydown', (event) => {
  * @param {number} [speed] Initial base speed for the new insect.
  */
 function spawnEnemy(speed) {
-  const point = SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
-  const enemy = new Enemy(scene, point, pickEnemyType(score.value));
+  const enemy = new Enemy(scene, pickSpawnPoint(), pickEnemyType(score.value));
   if (typeof speed === 'number') enemy.setBaseSpeed(speed);
   enemies.push(enemy);
 }
@@ -272,7 +320,7 @@ function canEnemyStep(x, y, self) {
   // Walls block movement. The insect's own body radius is added to the
   // house's, so it comes to rest flush against the wall.
   const probe = new THREE.Vector3(x, y, 0);
-  if (collidesWithHouse(probe, houses, self.type.radius * 0.7 + WALL_CLEARANCE)) {
+  if (collidesWithObstacle(probe, obstacles, self.type.radius * 0.7 + WALL_CLEARANCE)) {
     return false;
   }
 
@@ -293,7 +341,7 @@ function canEnemyStep(x, y, self) {
  * @returns {boolean} True if it would overlap a house.
  */
 function hitsWall(position, radius) {
-  return collidesWithHouse(position, houses, radius + WALL_CLEARANCE);
+  return collidesWithObstacle(position, obstacles, radius + WALL_CLEARANCE);
 }
 
 /**
@@ -333,14 +381,14 @@ function unstickEnemy(enemy) {
 
   let nearest = null;
   let nearestDistance = Infinity;
-  for (const house of houses) {
+  for (const obstacle of obstacles) {
     const distance = Math.hypot(
-      current.x - house.position.x,
-      current.y - house.position.y
+      current.x - obstacle.position.x,
+      current.y - obstacle.position.y
     );
     if (distance < nearestDistance) {
       nearestDistance = distance;
-      nearest = house;
+      nearest = obstacle;
     }
   }
 
@@ -362,7 +410,7 @@ function unstickEnemy(enemy) {
  */
 function isPowerUpSpotFree(x, y) {
   const probe = new THREE.Vector3(x, y, 0);
-  if (collidesWithHouse(probe, houses, POWERUP_WALL_CLEARANCE)) return false;
+  if (collidesWithObstacle(probe, obstacles, POWERUP_WALL_CLEARANCE)) return false;
 
   // Never drop a pickup right under the hero's feet — that would be a
   // freebie instead of a reward for exploring.
@@ -411,12 +459,28 @@ renderer.setAnimationLoop(() => {
   // refused a whole hop away from it, and the landing spot is clamped so he
   // can never leave the board.
   player.resolveTarget = trimHopToWalls;
-  player.confine = clampToPlayfield;
+  player.confine = (position) => clampToBoard(position, player.radius);
   player.update(delta);
+
+  // Keep the hero visible: fade any tree or bush that lines up between the
+  // camera and the frog.
+  if (scenery) scenery.update(camera, player.position, delta);
 
   // --- Power-ups ----------------------------------------------------------
   // Resolved after movement so a hop that lands on a pickup collects it.
-  powerUps.update(delta, player.position, isPowerUpSpotFree);
+  const picked = powerUps.update(delta, player.position, isPowerUpSpotFree);
+
+  // Instant pickups act on systems owned here rather than in the manager.
+  for (const type of picked) {
+    if (type.key === 'heart') {
+      health.addMaxHp(1);
+      sound.heal();
+    } else if (type.key === 'bomb') {
+      enemies.forEach((enemy) => enemy.dispose());
+      enemies = [];
+      sound.bomb();
+    }
+  }
 
   // --- Attack lifecycle ---------------------------------------------------
   attack.update(delta);
@@ -507,21 +571,37 @@ renderer.setAnimationLoop(() => {
     if (!moved) unstickEnemy(enemy);
 
     // Insects hunt, but they stay on the board like everyone else.
-    clampToPlayfield(current);
+    clampToBoard(current, enemy.type.radius * 0.5);
   });
 
   // --- Scoring: survival --------------------------------------------------
   score.addSurvivalPoints(delta);
 
+  // --- Damage -------------------------------------------------------------
+  // A touch costs a heart rather than the whole run. A Shield power-up, or
+  // the mercy window that follows each hit, keeps the hero safe.
+  health.update(delta);
+
+  if (!boosts.shielded && !health.shielded && playerHitsEnemy()) {
+    health.takeHit();
+    sound.hurt();
+  }
+
+  // Blink the frog while he is briefly untouchable, so it is obvious he has
+  // been hit and cannot be hit again yet.
+  if (player.model) {
+    const blinking = health.shielded && Math.floor(health.invulnerable * 12) % 2 === 1;
+    player.model.visible = !blinking;
+  }
+
   // --- Lose condition (highest priority) ----------------------------------
-  // A shield power-up lets the hero shrug off a touch.
-  if (!boosts.shielded && playerHitsEnemy()) {
+  if (health.dead) {
     showGameOver();
   }
 
   // --- Final safety net ---------------------------------------------------
   // Whatever the frame did, the hero ends it inside the board.
-  clampToPlayfield(player.group.position);
+  clampToBoard(player.group.position, player.radius);
 
   renderer.render(scene, camera);
 });

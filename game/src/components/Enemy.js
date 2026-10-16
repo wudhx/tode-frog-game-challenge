@@ -10,15 +10,8 @@ export const ENEMY_SPEED = 45;
 /** Height the insects hover at, in world units. */
 export const ENEMY_HOVER = 38;
 
-// The four corners of the map, in world coordinates. Kept inside the
-// playfield but outside the camera's initial view, so monsters walk into
-// sight within a few seconds instead of taking 20 to cross the map.
-export const SPAWN_POINTS = [
-  new THREE.Vector2(-260, 260),
-  new THREE.Vector2(260, 260),
-  new THREE.Vector2(-260, -260),
-  new THREE.Vector2(260, -260),
-];
+// Spawn positions are chosen by main.js: on a board this large, insects have
+// to appear relative to the hero rather than at fixed map corners.
 
 // ---------------------------------------------------------------------------
 // Procedural textures

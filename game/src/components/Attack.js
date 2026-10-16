@@ -32,7 +32,11 @@ export class Attack {
     this.enabled = true;
 
     // --- Visual ring -------------------------------------------------------
-    const geometry = new THREE.CircleGeometry(this.radius, 40);
+    // The geometry is a unit circle scaled to the live attack radius. Building
+    // it at a fixed size (as this originally did) meant the ring never grew
+    // when the Range power-up widened the blast — the damage got bigger but
+    // the picture stayed the same.
+    const geometry = new THREE.CircleGeometry(1, 48);
     const material = new THREE.MeshBasicMaterial({
       color: 0xffff00,
       transparent: true,
@@ -41,6 +45,7 @@ export class Attack {
     });
 
     this.ring = new THREE.Mesh(geometry, material);
+    this.ring.scale.setScalar(this.radius);
     this.ring.visible = false;
     // Float just above the ground so it doesn't z-fight with the floor.
     this.ring.position.z = 0.25;
@@ -73,9 +78,10 @@ export class Attack {
 
     this.cooldown = this.cooldownDuration;
 
-    // Snap the ring to the player and show it.
+    // Snap the ring to the player, size it to the live radius, and show it.
     this.ring.position.x = this.player.position.x;
     this.ring.position.y = this.player.position.y;
+    this.ring.scale.setScalar(this.radius);
     this.ring.visible = true;
     this.visualTimer = ATTACK_VISUAL_DURATION;
 
@@ -103,10 +109,12 @@ export class Attack {
     }
 
     // Keep the ring glued to the player while it is visible so it reads as
-    // "centered on Tode" even if he is mid-hop.
+    // "centered on Tode" even if he is mid-hop, and keep its size in step
+    // with the live radius in case Range changed mid-blast.
     if (this.ring.visible) {
       this.ring.position.x = this.player.position.x;
       this.ring.position.y = this.player.position.y;
+      this.ring.scale.setScalar(this.radius);
     }
   }
 
