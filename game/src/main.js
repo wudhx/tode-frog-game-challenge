@@ -4,7 +4,12 @@ import { createRenderer } from './components/Renderer.js';
 import { Player } from './components/Player.js';
 import { Enemy, pickEnemyType } from './components/Enemy.js';
 import { Map, BOARD_HALF, TILE_SIZE } from './components/Map.js';
-import { addHouses, collidesWithObstacle } from './components/House.js';
+import {
+  addHouses,
+  collidesWithObstacle,
+  HOUSE_ATTACK_RANGE,
+  HOUSE_HP,
+} from './components/House.js';
 import { Scenery } from './components/Scenery.js';
 import { Attack } from './components/Attack.js';
 import { Score } from './components/Score.js';
@@ -13,6 +18,7 @@ import { Health } from './components/Health.js';
 import { sound } from './components/Sound.js';
 import { PowerUpManager } from './components/PowerUp.js';
 import { scaledParameters } from './components/Difficulty.js';
+import { hud, highestPriorityKey } from './components/Interactables.js';
 import './style.css';
 
 // ---------------------------------------------------------------------------
@@ -23,23 +29,49 @@ const PLAYER_HIT_DISTANCE = 45;
 /** Enemy vs. enemy: how close two insects may get. */
 const ENEMY_HIT_DISTANCE = 45;
 
-/**
- * Extra breathing room kept between a body and a house wall. Collision adds
- * the house's own measured radius to the mover's radius, so bodies stop when
- * they *touch* instead of when their centres meet — which is what made the
- * frog freeze a visible distance away from every wall.
- */
 const WALL_CLEARANCE = 6;
-/** Power-ups need less clearance than a body does. */
 const POWERUP_WALL_CLEARANCE = 26;
+
+// --- Interactive prop constants --------------------------------------------
+/** Seconds of invulnerability the hero gets inside a house. */
+const HOUSE_INVULN_DURATION = 1.5;
+/** Cooldown between house invulnerability uses. */
+const HOUSE_COOLDOWN = 30;
+/** Distance the hero must be within to be "inside" a house. */
+const HOUSE_INTERIOR_RADIUS_RATIO = 0.8;
+
+/** How long the bush hide lasts before the hero is exposed. */
+const BUSH_HIDE_DURATION = 4;
+/** How close the hero must be to count as "in" a bush. */
+const BUSH_INTERIOR_DISTANCE = 38;
+
+/** How long the player has to stand next to a flower to harvest it. */
+const FLOWER_HARVEST_TIME = 2.0;
+/** Distance at which a flower notices the hero. */
+const FLOWER_TRIGGER_DISTANCE = 48;
+/** How long before a harvested flower grows back. */
+const FLOWER_REGROW = 15;
+
+/** How close to the pond shore counts as "near the water". */
+const POND_SHORE_DISTANCE = 110;
+/** Heal rate per second when standing on the shore. */
+const POND_SHORE_HEAL_RATE = 0.5;
+/** How long the hero must wade in before the bonus fires. */
+const POND_BONUS_WADE_TIME = 0.5;
+/** How close to the pond centre counts as "in the water". */
+const POND_INNER_RADIUS_RATIO = 0.72;
+/** Cooldown after leaving the water before the hero can wade in again. */
+const POND_COOLDOWN = 1.5;
+
+/** Tree canopy radius used for line-of-sight blocking. */
+const TREE_LOS_RADIUS = 55;
+/** How far the hero can be from a tree to count as "near" it (proximity hint). */
+const TREE_PROXIMITY_DISTANCE = 90;
+/** How close the hero has to be to a bush for an enemy to be willing to whack it. */
+const BUSH_ATTACK_RANGE = 90;
 
 /**
  * Clamps a ground position to the board.
- *
- * The limit is `BOARD_HALF - radius`, so a body comes to rest with its own
- * edge exactly on the painted boundary. Clamping the *centre* to the board
- * edge (or worse, to the last tile centre) is what left the frog stranded a
- * visible distance from the rim.
  *
  * @param {THREE.Vector3} position Position to clamp, modified in place.
  * @param {number} [radius] Radius of the body being clamped.
@@ -67,18 +99,15 @@ scene.add(directionalLight);
 // ---------------------------------------------------------------------------
 const map = new Map(scene);
 
-/**
- * Everything on the board that blocks movement: houses, trees and bushes.
- * Each entry is `{ position, radius }`. Filled in once the models load.
- */
+/** Houses, once loaded. Each has hp, position, radius, alive. */
+let houses = [];
+/** Scenery (trees, bushes, flowers, ponds), once loaded. */
+let scenery = null;
+/** Everything that blocks movement: alive houses, trees, bushes. */
 let obstacles = [];
 
-/** Scenery props, once loaded. Faded whenever they block the camera. */
-let scenery = null;
-
-addHouses(map.housesGroup, null).then((placed) => {
-  // Scenery goes in after the houses so it can avoid dropping a tree inside
-  // one. Trees and bushes then join the same collision list.
+addHouses(map.housesGroup).then((placed) => {
+  houses = placed;
   scenery = new Scenery(scene, placed);
   obstacles = [...placed, ...scenery.obstacles];
 });
@@ -94,6 +123,39 @@ const health = new Health();
 const highScores = new HighScores();
 const attack = new Attack(scene, player);
 const powerUps = new PowerUpManager(scene);
+
+// ---------------------------------------------------------------------------
+// Per-frame interaction state
+// ---------------------------------------------------------------------------
+/** Tracks the invulnerability window the house gives the hero. */
+const houseShield = {
+  active: false,
+  timer: 0,
+  cooldown: 0,
+};
+/** Tracks the bush hide / expose window. */
+const bushState = {
+  active: false,
+  bush: null,
+  timer: 0,
+  exposed: false,
+};
+/** Tracks the flower the hero is currently harvesting. */
+const flowerState = {
+  flower: null,
+  timer: 0,
+};
+/** Tracks the pond the hero is currently wading in. */
+const pondState = {
+  inWater: false,
+  pond: null,
+  timer: 0,
+  cooldown: 0,
+};
+/** Tracks the highest score milestone that has already bloomed a flower. */
+let lastFlowerMilestone = 0;
+/** Set of bushes enemies have recently whacked. */
+const damagedBushes = new Set();
 
 // ---------------------------------------------------------------------------
 // On-screen controls reminder
@@ -120,15 +182,8 @@ const PLAYER_START = new THREE.Vector3(0, 0, 0);
 /** @type {'playing' | 'game-over'} */
 let gameState = 'playing';
 
-// Game-over overlay (created lazily on first loss).
 let gameOverOverlay = null;
 
-/**
- * Builds the end-of-run panel: final score, best-run table and restart
- * prompt. Created once and reused for every subsequent run.
- *
- * @returns {HTMLElement} The overlay element.
- */
 function buildGameOverOverlay() {
   const overlay = document.createElement('div');
   overlay.className = 'game-over';
@@ -147,15 +202,11 @@ function buildGameOverOverlay() {
   return overlay;
 }
 
-/**
- * Shows the "Game Over" overlay, records the run, and freezes the world.
- */
 function showGameOver() {
   gameState = 'game-over';
 
   if (!gameOverOverlay) gameOverOverlay = buildGameOverOverlay();
 
-  // --- Record the run -----------------------------------------------------
   const result = highScores.submit(score.value);
 
   gameOverOverlay.querySelector('.go-score b').textContent = String(Math.floor(score.value));
@@ -163,7 +214,6 @@ function showGameOver() {
     ? 'inline-block'
     : 'none';
 
-  // Rebuild the leaderboard rows from the freshly-saved table.
   gameOverOverlay.querySelector('.go-board ol').innerHTML = highScores.entries
     .map(
       (entry, index) =>
@@ -183,13 +233,9 @@ function showGameOver() {
   attack.enabled = false;
 
   sound.gameOver();
-  // Let the game-over sting land before the celebration kicks in.
   if (result.isBest) sound.newBest(1.1);
 }
 
-/**
- * Clears the board and restarts a fresh run.
- */
 function resetGame() {
   player.group.visible = true;
   player.group.position.copy(PLAYER_START);
@@ -198,7 +244,6 @@ function resetGame() {
   player.controlsEnabled = true;
   player.stop();
 
-  // Undo any blink left over from the final hit.
   if (player.model) player.model.visible = true;
 
   enemies.forEach((enemy) => enemy.dispose());
@@ -211,17 +256,32 @@ function resetGame() {
   attack.reset();
   powerUps.reset();
 
+  // Reset interaction state.
+  houseShield.active = false;
+  houseShield.timer = 0;
+  houseShield.cooldown = 0;
+  bushState.active = false;
+  bushState.bush = null;
+  bushState.timer = 0;
+  bushState.exposed = false;
+  flowerState.flower = null;
+  flowerState.timer = 0;
+  pondState.inWater = false;
+  pondState.pond = null;
+  pondState.timer = 0;
+  pondState.cooldown = 0;
+  lastFlowerMilestone = 0;
+  damagedBushes.clear();
+
   if (gameOverOverlay) {
     gameOverOverlay.style.display = 'none';
   }
 
   gameState = 'playing';
 
-  // Seed the new run with a single enemy.
   spawnEnemy();
 }
 
-// Space restarts the game once it is over.
 window.addEventListener('keydown', (event) => {
   if (event.code !== 'Space') return;
   if (gameState === 'game-over') {
@@ -230,7 +290,6 @@ window.addEventListener('keydown', (event) => {
   }
 });
 
-// M toggles all sound effects.
 window.addEventListener('keydown', (event) => {
   if (event.code !== 'KeyM') return;
   sound.muted = !sound.muted;
@@ -239,16 +298,6 @@ window.addEventListener('keydown', (event) => {
 // ---------------------------------------------------------------------------
 // Enemy spawning
 // ---------------------------------------------------------------------------
-/**
- * Picks a spawn point on a ring around the hero.
- *
- * The course version spawned insects at the four map corners, which worked on
- * a 12x12 board. On a 30x30 one that would mean a thirty-second wait before
- * anything reached the player, so insects now appear just outside the
- * camera's view instead.
- *
- * @returns {THREE.Vector2} A clear spot on the board.
- */
 function pickSpawnPoint() {
   for (let attempt = 0; attempt < 24; attempt++) {
     const angle = Math.random() * Math.PI * 2;
@@ -259,7 +308,6 @@ function pickSpawnPoint() {
       player.position.y + Math.sin(angle) * distance
     );
 
-    // Keep it on the board and out of the walls.
     clampToBoard(point, 70);
     if (collidesWithObstacle(new THREE.Vector3(point.x, point.y, 0), obstacles, 40)) {
       continue;
@@ -268,20 +316,11 @@ function pickSpawnPoint() {
     return point;
   }
 
-  // Fallback: straight outside the camera view, clamped to the board.
   const fallback = new THREE.Vector2(player.position.x + 700, player.position.y);
   clampToBoard(fallback, 70);
   return fallback;
 }
 
-/**
- * Spawns one insect just outside the hero's view.
- *
- * The species is chosen from the current score, so the swarm starts out as
- * plain flies and gradually picks up mosquitoes, bees and armoured beetles.
- *
- * @param {number} [speed] Initial base speed for the new insect.
- */
 function spawnEnemy(speed) {
   const enemy = new Enemy(scene, pickSpawnPoint(), pickEnemyType(score.value));
   if (typeof speed === 'number') enemy.setBaseSpeed(speed);
@@ -289,14 +328,54 @@ function spawnEnemy(speed) {
 }
 
 // ---------------------------------------------------------------------------
-// Gameplay helpers
+// Geometry helpers
 // ---------------------------------------------------------------------------
+/**
+ * True if the segment from `from` to `to` passes within `radius` of any tree.
+ * Used to drop enemy aggro when the hero hides behind a tree.
+ *
+ * @param {THREE.Vector2} from One endpoint.
+ * @param {THREE.Vector2} to The other endpoint.
+ * @param {Array<{position: THREE.Vector2}>} trees Trees to test against.
+ * @param {number} radius Tree canopy radius.
+ * @returns {boolean}
+ */
+function isBlockedByTree(from, to, trees, radius) {
+  for (const tree of trees) {
+    // Distance from the tree centre to the segment.
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const len2 = dx * dx + dy * dy;
+    if (len2 < 1e-6) continue;
+    const t = Math.max(0, Math.min(1, ((tree.position.x - from.x) * dx + (tree.position.y - from.y) * dy) / len2));
+    const cx = from.x + dx * t;
+    const cy = from.y + dy * t;
+    if (Math.hypot(tree.position.x - cx, tree.position.y - cy) < radius) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
- * Detects whether any enemy is close enough to fatally touch the hero.
- *
- * @returns {boolean} True on a fatal collision.
+ * Picks the nearest tree within a generous radius, for proximity-hint purposes.
  */
+function nearestTree(playerPosition, trees) {
+  let best = null;
+  let bestDistance = Infinity;
+  for (const tree of trees) {
+    const distance = playerPosition.distanceTo(tree.position);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = tree;
+    }
+  }
+  return { tree: best, distance: bestDistance };
+}
+
+// ---------------------------------------------------------------------------
+// Gameplay helpers
+// ---------------------------------------------------------------------------
 function playerHitsEnemy() {
   return enemies.some((enemy) => {
     const dx = enemy.position.x - player.position.x;
@@ -305,26 +384,11 @@ function playerHitsEnemy() {
   });
 }
 
-/**
- * Checks whether an enemy may stand at the given ground coordinates.
- *
- * Enemies respect walls and each other's personal space, but are never
- * blocked by the player — see the movement loop for why that matters.
- *
- * @param {number} x Candidate X coordinate.
- * @param {number} y Candidate Y coordinate.
- * @param {import('./components/Enemy.js').Enemy} self The moving enemy.
- * @returns {boolean} True if the spot is free.
- */
 function canEnemyStep(x, y, self) {
-  // Walls block movement. The insect's own body radius is added to the
-  // house's, so it comes to rest flush against the wall.
   const probe = new THREE.Vector3(x, y, 0);
   if (collidesWithObstacle(probe, obstacles, self.type.radius * 0.7 + WALL_CLEARANCE)) {
     return false;
   }
-
-  // Other insects block movement.
   return !enemies.some((other) => {
     if (other === self) return false;
     return (
@@ -333,52 +397,21 @@ function canEnemyStep(x, y, self) {
   });
 }
 
-/**
- * Whether a body of the given radius would be standing inside a wall.
- *
- * @param {THREE.Vector3} position Candidate ground position.
- * @param {number} radius Radius of the body being moved.
- * @returns {boolean} True if it would overlap a house.
- */
 function hitsWall(position, radius) {
   return collidesWithObstacle(position, obstacles, radius + WALL_CLEARANCE);
 }
 
-/**
- * Trims a hop so it lands as close as possible to its target without ending
- * up inside a house.
- *
- * Rejecting the hop outright is what left the frog stranded a whole hop-length
- * away from every wall. Instead we walk back along the hop direction and keep
- * the furthest spot that is still clear, so he hops right up to the wall.
- *
- * @param {THREE.Vector3} from Where the hop starts.
- * @param {THREE.Vector3} target Where an unobstructed hop would land.
- * @returns {THREE.Vector3|null} The trimmed landing spot, or null if wedged.
- */
 function trimHopToWalls(from, target) {
   if (!hitsWall(target, player.radius)) return target;
-
-  // Fine steps keep the frog from stopping noticeably short of the wall.
   for (let fraction = 0.95; fraction > 0.02; fraction -= 0.04) {
     const candidate = from.clone().lerp(target, fraction);
     if (!hitsWall(candidate, player.radius)) return candidate;
   }
-
   return null;
 }
 
-/**
- * Nudges a wedged insect back out into the open.
- *
- * Without this, an insect that somehow ends up inside a house's collision
- * circle fails every candidate step and freezes there for the rest of the run.
- *
- * @param {import('./components/Enemy.js').Enemy} enemy The stuck insect.
- */
 function unstickEnemy(enemy) {
   const current = enemy.position;
-
   let nearest = null;
   let nearestDistance = Infinity;
   for (const obstacle of obstacles) {
@@ -391,30 +424,82 @@ function unstickEnemy(enemy) {
       nearest = obstacle;
     }
   }
-
   if (!nearest || nearestDistance < 1e-3) return;
-
-  // Step directly away from the offending wall.
   const awayX = (current.x - nearest.position.x) / nearestDistance;
   const awayY = (current.y - nearest.position.y) / nearestDistance;
   current.x += awayX * 4;
   current.y += awayY * 4;
 }
 
-/**
- * Decides whether a power-up may be dropped at the given ground coordinates.
- *
- * @param {number} x Candidate X.
- * @param {number} y Candidate Y.
- * @returns {boolean} True if the spot is clear.
- */
 function isPowerUpSpotFree(x, y) {
   const probe = new THREE.Vector3(x, y, 0);
   if (collidesWithObstacle(probe, obstacles, POWERUP_WALL_CLEARANCE)) return false;
-
-  // Never drop a pickup right under the hero's feet — that would be a
-  // freebie instead of a reward for exploring.
   return Math.hypot(x - player.position.x, y - player.position.y) > TILE_SIZE * 1.5;
+}
+
+// ---------------------------------------------------------------------------
+// Pond bonuses
+// ---------------------------------------------------------------------------
+/**
+ * Finds a clear spot just outside the hero's pickup radius, so a flower's
+ * reward pops out beside it and has to be hopped to — dropping it under the
+ * hero's feet would collect it on the same frame and the bloom would never be
+ * seen.
+ *
+ * @param {number} fx Flower X.
+ * @param {number} fy Flower Y.
+ * @returns {{x: number, y: number}} A clear spot, or the flower itself as a
+ *   last resort.
+ */
+function findFlowerDropSpot(fx, fy) {
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 90 + Math.random() * 40;
+    const x = fx + Math.cos(angle) * distance;
+    const y = fy + Math.sin(angle) * distance;
+
+    if (Math.abs(x) > BOARD_HALF - 80 || Math.abs(y) > BOARD_HALF - 80) continue;
+    if (collidesWithObstacle(new THREE.Vector3(x, y, 0), obstacles, POWERUP_WALL_CLEARANCE)) continue;
+
+    return { x, y };
+  }
+  return { x: fx, y: fy };
+}
+
+/**
+ * Picks one of three pond bonuses at random and applies it.
+ */
+function triggerPondBonus(pond) {
+  const roll = Math.random();
+  if (roll < 0.4) {
+    // +3 hearts
+    health.addMaxHp(2);
+    health.heal(2);
+    hud.showAction('+3 hearts from the pond!', 'heart', '#e5484d');
+    sound.heal();
+  } else if (roll < 0.7) {
+    // Repel — every insect is forced into the disengaged state for 6 seconds.
+    for (const enemy of enemies) {
+      enemy.state = 'disengaged';
+      enemy.disengageTimer = 0;
+      enemy.disengageDirection.set(
+        enemy.position.x - player.position.x,
+        enemy.position.y - player.position.y
+      );
+      if (enemy.disengageDirection.lengthSq() < 1e-4) {
+        enemy.disengageDirection.set(1, 0);
+      } else {
+        enemy.disengageDirection.normalize();
+      }
+    }
+    hud.showAction('Repelled! Insects flee for 6s', 'pond', '#4da6ff');
+    sound.shield();
+  } else {
+    // Slow — every insect drops to 40% speed for 12 seconds.
+    powerUps.pondSlowTimer = 12;
+    hud.showAction('Pond chill: insects slowed 12s', 'freeze', '#8ee8ff');
+    sound.powerUp();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -430,24 +515,21 @@ window.addEventListener('resize', () => {
 // Animation loop
 // ---------------------------------------------------------------------------
 const clock = new THREE.Clock();
-
-// Track the visual ring's lifetime so an attack only "lands" once.
 let attackWasActive = false;
 
-renderer.setAnimationLoop(() => {
-  const delta = Math.min(clock.getDelta(), 0.1); // clamp big hitches
+// Scratch vector reused across frames.
+const _dir = new THREE.Vector2();
+const _target = new THREE.Vector2();
 
-  // --- Frozen? Only render. ----------------------------------------------
+renderer.setAnimationLoop(() => {
+  const delta = Math.min(clock.getDelta(), 0.1);
+
   if (gameState === 'game-over') {
     renderer.render(scene, camera);
     return;
   }
 
-  // --- Difficulty scaling -------------------------------------------------
   const params = scaledParameters(score.value);
-
-  // Active power-up effects. Read before movement so the hero benefits from
-  // them the instant they are collected (collection resolves further down).
   const boosts = powerUps.multipliers;
 
   player.setMoveDuration(params.playerMoveDuration * boosts.hopDuration);
@@ -455,22 +537,201 @@ renderer.setAnimationLoop(() => {
   attack.radius = params.attackRadius * boosts.attackRadius;
 
   // --- Player movement ----------------------------------------------------
-  // Hops are trimmed so the frog stops flush against a wall rather than being
-  // refused a whole hop away from it, and the landing spot is clamped so he
-  // can never leave the board.
   player.resolveTarget = trimHopToWalls;
   player.confine = (position) => clampToBoard(position, player.radius);
   player.update(delta);
 
-  // Keep the hero visible: fade any tree or bush that lines up between the
-  // camera and the frog.
+  // --- Hide any prop that lines up between the camera and the frog. ------
   if (scenery) scenery.update(camera, player.position, delta);
 
-  // --- Power-ups ----------------------------------------------------------
-  // Resolved after movement so a hop that lands on a pickup collects it.
-  const picked = powerUps.update(delta, player.position, isPowerUpSpotFree);
+  // =======================================================================
+  // 1. INTERACTIONS WITH THE WORLD
+  // =======================================================================
+  const playerPos2 = new THREE.Vector2(player.position.x, player.position.y);
 
-  // Instant pickups act on systems owned here rather than in the manager.
+  // --- House interaction --------------------------------------------------
+  let inHouse = null;
+  for (const house of houses) {
+    if (!house.alive) continue;
+    if (house.position.distanceTo(playerPos2) < house.radius * HOUSE_INTERIOR_RADIUS_RATIO) {
+      inHouse = house;
+      break;
+    }
+  }
+  if (inHouse && !houseShield.active && houseShield.cooldown <= 0) {
+    houseShield.active = true;
+    houseShield.timer = HOUSE_INVULN_DURATION;
+    houseShield.cooldown = HOUSE_COOLDOWN;
+    health.heal(1);
+    hud.showAction('Safe inside! +1 ❤', 'house', '#a3e635');
+    sound.shield();
+  }
+  if (houseShield.active) {
+    houseShield.timer = Math.max(0, houseShield.timer - delta);
+    if (houseShield.timer === 0) {
+      houseShield.active = false;
+    }
+  }
+  if (houseShield.cooldown > 0) {
+    houseShield.cooldown = Math.max(0, houseShield.cooldown - delta);
+  }
+
+  // --- Bush interaction ---------------------------------------------------
+  let inBush = null;
+  if (scenery) {
+    for (const bush of scenery.bushes) {
+      if (!bush.alive) continue;
+      if (bush.position.distanceTo(playerPos2) < BUSH_INTERIOR_DISTANCE) {
+        inBush = bush;
+        break;
+      }
+    }
+  }
+  if (inBush) {
+    if (bushState.bush !== inBush) {
+      // Entered a new bush.
+      bushState.bush = inBush;
+      bushState.timer = BUSH_HIDE_DURATION;
+      bushState.exposed = false;
+    } else if (!bushState.exposed) {
+      bushState.timer = Math.max(0, bushState.timer - delta);
+      if (bushState.timer === 0) {
+        bushState.exposed = true;
+        hud.showAction('Spotted! Insects are coming for you', 'bush', '#ff6b6b');
+        sound.hurt();
+      }
+    }
+    bushState.active = !bushState.exposed;
+  } else {
+    // Left any bush.
+    if (bushState.bush) {
+      bushState.bush = null;
+      bushState.timer = 0;
+      bushState.exposed = false;
+    }
+    bushState.active = false;
+  }
+
+  // --- Flower interaction -------------------------------------------------
+  let onFlower = null;
+  if (scenery) {
+    for (const flower of scenery.flowers) {
+      if (!flower.alive) continue;
+      if (flower.position.distanceTo(playerPos2) < FLOWER_TRIGGER_DISTANCE) {
+        onFlower = flower;
+        break;
+      }
+    }
+  }
+  if (onFlower) {
+    if (flowerState.flower !== onFlower) {
+      flowerState.flower = onFlower;
+      flowerState.timer = 0;
+    } else {
+      flowerState.timer = Math.min(FLOWER_HARVEST_TIME, flowerState.timer + delta);
+      if (flowerState.timer >= FLOWER_HARVEST_TIME) {
+        // Bloom into a 1.5x power-up, dropped just beside the flower.
+        const f = flowerState.flower;
+        f.alive = false;
+        f.group.visible = false;
+        f.regrowTimer = FLOWER_REGROW;
+        const spot = findFlowerDropSpot(f.position.x, f.position.y);
+        powerUps.spawnAt(spot.x, spot.y, ['speed', 'range', 'freeze', 'shield'], 1.5);
+        hud.showAction('A flower bloomed into a 1.5x power-up!', 'flower', '#ff6b9d');
+        sound.powerUp();
+        flowerState.flower = null;
+        flowerState.timer = 0;
+      }
+    }
+  } else if (flowerState.flower) {
+    flowerState.flower = null;
+    flowerState.timer = 0;
+  }
+
+  // Flower and bush regrowth.
+  if (scenery) {
+    for (const flower of scenery.flowers) {
+      if (!flower.alive) {
+        flower.regrowTimer -= delta;
+        if (flower.regrowTimer <= 0) {
+          flower.alive = true;
+          flower.group.visible = true;
+        }
+      }
+    }
+    for (const bush of scenery.bushes) {
+      if (!bush.alive) {
+        bush.regrowTimer = (bush.regrowTimer || 0) - delta;
+        if (bush.regrowTimer <= 0) {
+          bush.alive = true;
+          bush.group.visible = true;
+          damagedBushes.delete(bush);
+        }
+      }
+    }
+  }
+
+  // --- Pond interaction ---------------------------------------------------
+  let nearPond = null;
+  let inWater = null;
+  if (scenery) {
+    for (const pond of scenery.ponds) {
+      const d = pond.position.distanceTo(playerPos2);
+      if (d < pond.shoreRadius) nearPond = pond;
+      if (d < pond.surfaceRadius * POND_INNER_RADIUS_RATIO) inWater = pond;
+    }
+  }
+  if (nearPond && health.hp < health.maxHp) {
+    // Heal while standing on the shore.
+    health._silentHeal(health.hp + POND_SHORE_HEAL_RATE * delta);
+  }
+  if (inWater && pondState.cooldown <= 0) {
+    if (!pondState.inWater) {
+      pondState.inWater = true;
+      pondState.pond = inWater;
+      pondState.timer = 0;
+    } else {
+      pondState.timer += delta;
+      if (pondState.timer >= POND_BONUS_WADE_TIME && !pondState.pond.bonusClaimed) {
+        pondState.pond.bonusClaimed = true;
+        triggerPondBonus(pondState.pond);
+      }
+    }
+  } else if (pondState.inWater) {
+    pondState.inWater = false;
+    pondState.pond = null;
+    pondState.timer = 0;
+    pondState.cooldown = POND_COOLDOWN;
+  }
+  if (pondState.cooldown > 0) {
+    pondState.cooldown = Math.max(0, pondState.cooldown - delta);
+  }
+
+  // --- Pond-driven slow effect -------------------------------------------
+  if (powerUps.pondSlowTimer && powerUps.pondSlowTimer > 0) {
+    powerUps.pondSlowTimer -= delta;
+  } else {
+    powerUps.pondSlowTimer = 0;
+  }
+
+  // =======================================================================
+  // 2. PROXIMITY HINT
+  // =======================================================================
+  const presentKeys = [];
+  if (inHouse) presentKeys.push('house');
+  if (inBush) presentKeys.push('bush');
+  if (onFlower) presentKeys.push('flower');
+  if (nearPond) presentKeys.push('pond');
+  if (scenery) {
+    const { tree, distance } = nearestTree(playerPos2, scenery.trees);
+    if (tree && distance < TREE_PROXIMITY_DISTANCE) presentKeys.push('tree');
+  }
+  hud.setProximity(highestPriorityKey(presentKeys));
+
+  // =======================================================================
+  // 3. POWER-UPS
+  // =======================================================================
+  const picked = powerUps.update(delta, player.position, isPowerUpSpotFree);
   for (const type of picked) {
     if (type.key === 'heart') {
       health.addMaxHp(1);
@@ -482,16 +743,15 @@ renderer.setAnimationLoop(() => {
     }
   }
 
-  // --- Attack lifecycle ---------------------------------------------------
+  // =======================================================================
+  // 4. ATTACK LIFECYCLE
+  // =======================================================================
   attack.update(delta);
   const attackActive = attack.visualTimer > 0;
 
-  // On the rising edge of an attack, resolve who got hit.
   if (attackActive && !attackWasActive) {
     const hit = attack.enemiesInRange(enemies);
     if (hit.length > 0) {
-      // Armoured insects can shrug off a hit, so only the ones that actually
-      // ran out of hit points leave the board.
       const destroyed = hit.filter((enemy) => enemy.takeHit());
 
       if (destroyed.length > 0) {
@@ -500,61 +760,126 @@ renderer.setAnimationLoop(() => {
           score.addKillPoints(enemy.type.points);
         });
         enemies = enemies.filter((enemy) => !destroyed.includes(enemy));
-
-        // One chirp per attack, no matter how many insects were caught.
         sound.kill();
       }
     }
   }
   attackWasActive = attackActive;
 
-  // --- Enemy spawning -----------------------------------------------------
+  // =======================================================================
+  // 5. ENEMY SPAWNING
+  // =======================================================================
   spawnTimer -= delta;
   if (spawnTimer <= 0) {
     spawnEnemy(params.enemySpeed);
     spawnTimer = params.enemySpawnDelay;
   }
 
-  // --- Enemies ------------------------------------------------------------
-  enemies.forEach((enemy) => {
-    // Speed scales with difficulty, the species' own pace, and any active
-    // freeze effect.
-    enemy.setBaseSpeed(params.enemySpeed * boosts.enemySpeed);
-    // Flap the wings and animate any damage feedback.
+  // =======================================================================
+  // 6. ENEMIES (state machine, AI, movement, attacks)
+  // =======================================================================
+  // Tree list is shared across enemies.
+  const trees = scenery ? scenery.trees : [];
+
+  // Slow factor stacks with the existing freeze power-up.
+  const pondSlowFactor = powerUps.pondSlowTimer > 0 ? 0.4 : 1;
+
+  // First pass: behaviour + bookkeeping. Then move.
+  for (const enemy of enemies) {
+    enemy.setBaseSpeed(params.enemySpeed * boosts.enemySpeed * pondSlowFactor);
     enemy.animate(delta);
 
     const current = enemy.position;
-    const dir = new THREE.Vector2(
-      player.position.x - current.x,
-      player.position.y - current.y
-    );
-    if (dir.lengthSq() < 1e-6) return;
-    dir.normalize();
 
-    // Face the player whether or not the step below succeeds.
-    enemy.group.rotation.z = Math.atan2(dir.y, dir.x);
+    // Where is the player right now? Disengaged insects have already
+    // forgotten it.
+    if (enemy.state === 'chasing') {
+      enemy.rememberPlayerPosition(playerPos2.x, playerPos2.y);
+    }
+
+    const canSee = enemy.state === 'chasing'
+      ? !isBlockedByTree(current, { x: enemy.lastSeenX, y: enemy.lastSeenY }, trees, TREE_LOS_RADIUS)
+      : true;
+
+    enemy.updateBehavior(delta, canSee);
+
+    // -- Pick a target ----------------------------------------------------
+    let target = null;
+    let isHouseAttack = false;
+    let isBushAttack = false;
+
+    // Distances are computed by hand: `current` is a Vector3 and the props
+    // below are Vector2, and Vector3.distanceTo(Vector2) yields NaN because
+    // the prop has no `z`.
+    const distanceTo = (p) => Math.hypot(current.x - p.x, current.y - p.y);
+
+    // 1. House whacking: if a live house is in range, prioritise it.
+    if (enemy.state === 'chasing') {
+      for (const house of houses) {
+        if (!house.alive) continue;
+        if (distanceTo(house.position) < HOUSE_ATTACK_RANGE) {
+          target = house.position;
+          isHouseAttack = true;
+          if (house.mayBeHit(delta)) {
+            const destroyed = house.takeDamage();
+            house.registerHit();
+            sound.houseHit();
+            if (destroyed) {
+              hud.showAction('A house has fallen!', 'house', '#e5484d');
+              // Open up the gap: the house is no longer an obstacle, so
+              // the player and other insects can walk through the ruins.
+              obstacles = obstacles.filter((o) => o !== house);
+            }
+          }
+          break;
+        }
+      }
+    }
+
+    // 2. Bush whacking: a *discovered* hero hiding in a bush.
+    if (!isHouseAttack && enemy.state === 'chasing' && bushState.exposed && bushState.bush && bushState.bush.alive) {
+      if (distanceTo(bushState.bush.position) < BUSH_ATTACK_RANGE) {
+        target = bushState.bush.position;
+        isBushAttack = true;
+        if (!damagedBushes.has(bushState.bush)) {
+          // One hit clears the bush.
+          damagedBushes.add(bushState.bush);
+          bushState.bush.alive = false;
+          bushState.bush.group.visible = false;
+          bushState.bush.regrowTimer = 25; // bushes take longer to regrow than flowers
+          hud.showAction('A bush was whacked apart', 'bush', '#ff6b6b');
+          sound.hurt();
+        }
+      }
+    }
+
+    // 3. Default: chase player, or fly away when disengaged.
+    if (!target) {
+      if (enemy.state === 'disengaged') {
+        // Pick a point along the disengage direction well off-screen.
+        _target.set(
+          current.x + enemy.disengageDirection.x * 500,
+          current.y + enemy.disengageDirection.y * 500
+        );
+        clampToBoard(_target, 60);
+        target = _target;
+      } else {
+        target = { x: enemy.lastSeenX, y: enemy.lastSeenY };
+      }
+    }
+
+    // -- Move towards target ---------------------------------------------
+    _dir.set(target.x - current.x, target.y - current.y);
+    if (_dir.lengthSq() < 1e-6) continue;
+    _dir.normalize();
+
+    enemy.group.rotation.z = Math.atan2(_dir.y, _dir.x);
 
     const step = enemy.speed * delta;
-    const dx = dir.x * step;
-    const dy = dir.y * step;
+    const dx = _dir.x * step;
+    const dy = _dir.y * step;
 
-    // Enemies are deliberately NOT blocked by the player. If they were, they
-    // would stall just outside the kill radius (distance ~45) and the run
-    // could never end. Letting them close the gap is what makes the
-    // "Game Over" check fire reliably.
-    //
-    // They do have to get around walls, though. We try, in order: straight at
-    // the hero, each axis on its own, then a perpendicular deflection either
-    // way. That last pair is what lets an insect slide along a wall or squeeze
-    // out of a corner instead of grinding against it.
-    const candidates = [
-      [dx, dy],
-      [dx, 0],
-      [0, dy],
-      [dy, -dx],
-      [-dy, dx],
-    ];
-
+    const candidates = [[dx, dy], [dx, 0], [0, dy], [dy, -dx], [-dy, dx]];
     let moved = false;
     for (const [moveX, moveY] of candidates) {
       if (moveX === 0 && moveY === 0) continue;
@@ -565,46 +890,107 @@ renderer.setAnimationLoop(() => {
         break;
       }
     }
-
-    // Wedged with no legal step in any direction: back out of the wall so it
-    // can rejoin the chase next frame instead of freezing there forever.
     if (!moved) unstickEnemy(enemy);
 
-    // Insects hunt, but they stay on the board like everyone else.
     clampToBoard(current, enemy.type.radius * 0.5);
+  }
+
+  // Remove insects that have finished their disengage animation.
+  enemies = enemies.filter((enemy) => {
+    if (enemy.readyToRemove) {
+      enemy.dispose();
+      return false;
+    }
+    return true;
   });
 
-  // --- Scoring: survival --------------------------------------------------
+  // =======================================================================
+  // 7. SCORE / FLOWER GROWTH
+  // =======================================================================
   score.addSurvivalPoints(delta);
 
-  // --- Damage -------------------------------------------------------------
-  // A touch costs a heart rather than the whole run. A Shield power-up, or
-  // the mercy window that follows each hit, keeps the hero safe.
+  const milestone = Math.floor(score.value / 200);
+  if (milestone > lastFlowerMilestone) {
+    lastFlowerMilestone = milestone;
+    if (scenery) {
+      const grown = scenery.growFlowers();
+      if (grown.length > 0) {
+        hud.showAction('A new flower has bloomed!', 'flower', '#ff6b9d');
+      }
+    }
+  }
+
+  // =======================================================================
+  // 8. DAMAGE
+  // =======================================================================
   health.update(delta);
 
-  if (!boosts.shielded && !health.shielded && playerHitsEnemy()) {
+  const safe =
+    boosts.shielded ||
+    health.shielded ||
+    houseShield.active ||
+    bushState.active;
+
+  if (!safe && playerHitsEnemy()) {
     health.takeHit();
     sound.hurt();
   }
 
-  // Blink the frog while he is briefly untouchable, so it is obvious he has
-  // been hit and cannot be hit again yet.
   if (player.model) {
     const blinking = health.shielded && Math.floor(health.invulnerable * 12) % 2 === 1;
     player.model.visible = !blinking;
   }
 
-  // --- Lose condition (highest priority) ----------------------------------
   if (health.dead) {
     showGameOver();
   }
 
-  // --- Final safety net ---------------------------------------------------
-  // Whatever the frame did, the hero ends it inside the board.
+  // =======================================================================
+  // 9. HOUSE VISUAL UPKEEP
+  // =======================================================================
+  for (const house of houses) house.update(delta);
+
+  // =======================================================================
+  // 10. FINAL SAFETY NET
+  // =======================================================================
   clampToBoard(player.group.position, player.radius);
 
   renderer.render(scene, camera);
 });
 
-// Give the player a starting wave immediately.
 spawnEnemy();
+
+// ---------------------------------------------------------------------------
+// Debug hook for automated testing. Exposes the live world state so a headless
+// browser can assert on it without reaching into module scope. Not used by the
+// game itself.
+// ---------------------------------------------------------------------------
+window.__hud = {
+  get houses() { return houses; },
+  get trees() { return scenery ? scenery.trees : []; },
+  get bushes() { return scenery ? scenery.bushes : []; },
+  get flowers() { return scenery ? scenery.flowers : []; },
+  get ponds() { return scenery ? scenery.ponds : []; },
+  get enemies() { return enemies; },
+  get pickups() { return powerUps.pickups; },
+  get powerUps() { return powerUps; },
+  get scene() { return scene; },
+  get score() { return score; },
+  get health() { return health; },
+  get scenery() { return scenery; },
+  get houseAttackRange() { return HOUSE_ATTACK_RANGE; },
+  /** Move the hero to a world position (test only). */
+  teleport(x, y) {
+    player.group.position.set(x, y, 0);
+    player.stop();
+  },
+  /** Current hero ground position as {x, y}. */
+  get playerPos2() { return { x: player.position.x, y: player.position.y }; },
+  /** Force a given interaction's internal state for inspection. */
+  state: {
+    get houseShield() { return houseShield; },
+    get bushState() { return bushState; },
+    get flowerState() { return flowerState; },
+    get pondState() { return pondState; },
+  },
+};

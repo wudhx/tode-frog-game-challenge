@@ -148,6 +148,18 @@ class Sound {
     this.arpeggio([523, 659, 784], { step: 0.07, duration: 0.13, type: 'sine', gain: 0.5 });
   }
 
+  /** A protective bell when the shield is up. */
+  shield() {
+    this.tone({ freq: 720, endFreq: 1100, duration: 0.18, type: 'sine', gain: 0.4 });
+    this.tone({ freq: 1100, endFreq: 1500, duration: 0.22, type: 'sine', gain: 0.3, delay: 0.18 });
+  }
+
+  /** A heavy thunk when an insect hits a house. */
+  houseHit() {
+    this.tone({ freq: 140, endFreq: 60, duration: 0.12, type: 'square', gain: 0.4 });
+    this.tone({ freq: 90, endFreq: 30, duration: 0.16, type: 'sawtooth', gain: 0.25, delay: 0.04 });
+  }
+
   /**
    * A celebratory fanfare for beating the previous best score.
    *

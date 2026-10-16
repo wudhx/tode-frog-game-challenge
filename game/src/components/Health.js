@@ -82,6 +82,17 @@ export class Health {
   }
 
   /**
+   * Like `heal`, but for the steady trickle from a pond shore — fractional
+   * values are allowed and the HUD is not redrawn every frame (the player
+   * is already there to see the bar fill).
+   *
+   * @param {number} targetHp New hp value, clamped to the maximum.
+   */
+  _silentHeal(targetHp) {
+    this.hp = Math.min(this.maxHp, targetHp);
+  }
+
+  /**
    * Counts the mercy window down. Called once per frame.
    *
    * @param {number} delta Seconds since the previous frame.

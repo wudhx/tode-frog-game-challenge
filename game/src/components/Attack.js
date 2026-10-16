@@ -48,7 +48,7 @@ export class Attack {
     this.ring.scale.setScalar(this.radius);
     this.ring.visible = false;
     // Float just above the ground so it doesn't z-fight with the floor.
-    this.ring.position.z = 0.25;
+    this.ring.position.z = 1.2;
     scene.add(this.ring);
 
     // Seconds the ring has been visible for.

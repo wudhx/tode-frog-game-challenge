@@ -284,6 +284,74 @@ canvas.game {
   opacity: 0.6;
 }
 
+/* --- Proximity + action prompts ------------------------------------------- */
+.interaction-proximity {
+  position: fixed;
+  top: 78px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #1b4332;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  z-index: 12;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  transition: opacity 0.18s ease-out;
+  opacity: 1;
+}
+
+.interaction-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.interaction-toast {
+  position: fixed;
+  top: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 22px;
+  border-radius: 14px;
+  background: rgba(12, 24, 16, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  z-index: 13;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  white-space: nowrap;
+}
+
+.interaction-toast.is-shown {
+  animation: interaction-toast-in 0.28s ease-out forwards;
+}
+
+@keyframes interaction-toast-in {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.interaction-toast-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
 /* --- Controls hint ------------------------------------------------------- */
 .hint {
   position: fixed;

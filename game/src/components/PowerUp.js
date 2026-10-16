@@ -191,7 +191,7 @@ function buildMarker(cfg) {
     })
   );
   // Just above the tiles, so it does not z-fight with the floor.
-  marker.position.z = 0.4;
+  marker.position.z = 1.2;
   return marker;
 }
 
@@ -213,11 +213,15 @@ export class PowerUp {
    * @param {THREE.Scene} scene Scene to attach to.
    * @param {THREE.Vector2} position Ground position.
    * @param {string} typeKey Which archetype.
+   * @param {number} [boostedMul] Multiplier on the timed effect's duration.
+   *   Flowers drop a 1.5x version of their random power-up.
    */
-  constructor(scene, position, typeKey) {
+  constructor(scene, position, typeKey, boostedMul = 1) {
     this.scene = scene;
     this.type = POWERUP_TYPES[typeKey];
     this.typeKey = typeKey;
+    /** 1.5x when dropped by a flower, 1 otherwise. */
+    this.boostedMul = boostedMul;
 
     this.group = new THREE.Group();
     this.group.position.set(position.x, position.y, 0);
@@ -307,6 +311,12 @@ export class PowerUpManager {
     /** Remaining seconds for each active effect. */
     this.effects = {};
     for (const key of TYPE_KEYS) this.effects[key] = 0;
+
+    /**
+     * Remaining seconds of the "pond chill" effect, which stacks on top of the
+     * regular freeze power-up to slow every insect to 40% speed.
+     */
+    this.pondSlowTimer = 0;
 
     this.buildHud();
   }
@@ -400,6 +410,21 @@ export class PowerUpManager {
   }
 
   /**
+   * Spawns a pickup at a specific spot, choosing randomly from the given
+   * type keys. Used by flowers that bloom into a 1.5x power-up.
+   *
+   * @param {number} x
+   * @param {number} y
+   * @param {Array<string>} typePool One of `TYPE_KEYS` style keys to pick from.
+   * @param {number} [boostedMul] Duration multiplier on the picked-up effect.
+   */
+  spawnAt(x, y, typePool, boostedMul = 1) {
+    const pool = typePool && typePool.length > 0 ? typePool : TYPE_KEYS;
+    const typeKey = pool[Math.floor(Math.random() * pool.length)];
+    this.pickups.push(new PowerUp(this.scene, new THREE.Vector2(x, y), typeKey, boostedMul));
+  }
+
+  /**
    * Advances spawning, animation, collection and effect timers.
    *
    * @param {number} delta Seconds since the previous frame.
@@ -434,7 +459,7 @@ export class PowerUpManager {
         if (pickup.type.instant) {
           collected.push(pickup.type);
         } else {
-          this.effects[pickup.typeKey] = pickup.type.duration;
+          this.effects[pickup.typeKey] = pickup.type.duration * (pickup.boostedMul || 1);
         }
 
         // Tell the player what they just picked up, and what it does.
@@ -508,6 +533,7 @@ export class PowerUpManager {
     this.pickups = [];
     this.spawnTimer = POWERUP_SPAWN_INTERVAL * 0.6;
     for (const key of TYPE_KEYS) this.effects[key] = 0;
+    this.pondSlowTimer = 0;
     this.renderHud();
   }
 }

@@ -320,6 +320,11 @@ function getBlueprint(typeKey) {
 /**
  * A single flying insect that hunts the hero. Archetypes differ in speed,
  * size, durability and kill value — see ENEMY_TYPES.
+ *
+ * Each insect runs a tiny state machine: it is either `chasing` the hero or
+ * `disengaged` after losing line of sight for too long. A disengaged insect
+ * drifts away from the player for a few seconds, then asks the caller to
+ * remove it.
  */
 export class Enemy {
   /**
@@ -365,6 +370,16 @@ export class Enemy {
 
     // Countdown for the "took a hit but survived" swell.
     this.hitFlash = 0;
+
+    // ---- State machine ----------------------------------------------------
+    /** @type {'chasing' | 'disengaged'} */
+    this.state = 'chasing';
+    /** Seconds since the enemy last saw the hero. */
+    this.lostSightTimer = 0;
+    /** Seconds since the enemy disengaged; once it crosses 4s the caller removes it. */
+    this.disengageTimer = 0;
+    /** Cached unit vector pointing away from the hero when disengaging. */
+    this.disengageDirection = new THREE.Vector2(1, 0);
 
     this.loaded = true;
   }
@@ -415,6 +430,62 @@ export class Enemy {
     } else if (this.visual.scale.x !== 1) {
       this.visual.scale.setScalar(1);
     }
+  }
+
+  /**
+   * Updates the state machine. The caller passes in whether this particular
+   * enemy can currently see the player (line-of-sight test against trees).
+   *
+   * @param {number} delta Seconds since the previous frame.
+   * @param {boolean} canSeePlayer True if there is no tree between us and the hero.
+   */
+  updateBehavior(delta, canSeePlayer) {
+    if (this.state === 'chasing') {
+      if (canSeePlayer) {
+        this.lostSightTimer = 0;
+      } else {
+        this.lostSightTimer += delta;
+        if (this.lostSightTimer >= 1.5) {
+          this.state = 'disengaged';
+          this.disengageTimer = 0;
+          // Pick a unit vector pointing away from the player. The caller will
+          // give us a target point along this ray; the insect will follow it
+          // until it leaves the board, at which point it is removed.
+          this.disengageDirection.set(
+            this.group.position.x - this.lastSeenX,
+            this.group.position.y - this.lastSeenY
+          );
+          if (this.disengageDirection.lengthSq() < 1e-4) {
+            this.disengageDirection.set(1, 0);
+          } else {
+            this.disengageDirection.normalize();
+          }
+        }
+      }
+    } else if (this.state === 'disengaged') {
+      this.disengageTimer += delta;
+    }
+  }
+
+  /**
+   * Records where the player was last seen. Drives the disengage fly-away
+   * direction, and is what the chaser still chases towards.
+   *
+   * @param {number} x
+   * @param {number} y
+   */
+  rememberPlayerPosition(x, y) {
+    this.lastSeenX = x;
+    this.lastSeenY = y;
+  }
+
+  /**
+   * True once the insect has been disengaged long enough to clean up.
+   *
+   * @returns {boolean}
+   */
+  get readyToRemove() {
+    return this.state === 'disengaged' && this.disengageTimer >= 4;
   }
 
   /**
