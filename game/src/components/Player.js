@@ -58,6 +58,8 @@ export class Player {
       targetPosition: new THREE.Vector3(),
       // Direction the model should be facing (radians around Z).
       rotation: 0,
+      // How much of a full-length hop this one is (1 = unobstructed).
+      fraction: 1,
     };
 
     // Freeze all player input while the game-over overlay is showing.
@@ -66,13 +68,18 @@ export class Player {
     // Seconds a single hop takes. Adjusted by the difficulty system.
     this.moveDuration = MOVE_DURATION;
 
-    // If a proposed hop would land inside a wall, fall back to the start.
-    // Set by main.js each time a move begins.
-    this.isBlocked = () => false;
+    // Lets the world trim a hop so the hero comes to rest right against a
+    // wall instead of stopping a whole hop short of it. Returns the adjusted
+    // landing spot, or null when there is nowhere to go. Set by main.js.
+    this.resolveTarget = (from, target) => target;
 
     // Hard backstop applied to every hop's landing spot, so the frog can
     // never leave the board. Set by main.js.
     this.confine = () => {};
+
+    // Half the frog's widest horizontal extent. Measured from the model once
+    // it loads, so collision uses his real size rather than a guess.
+    this.radius = 22;
 
     this.bindInput();
     this.load();
@@ -101,6 +108,11 @@ export class Player {
       model.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(model);
       model.position.z -= box.min.z;
+
+      // Half of the widest horizontal extent is the frog's footprint radius.
+      // main.js adds this to a house's radius so he stops when he *touches*
+      // a wall rather than when his centre reaches it.
+      this.radius = Math.max(box.max.x - box.min.x, box.max.y - box.min.y) / 2;
 
       this.model = model;
       this.yaw.add(model);
@@ -133,34 +145,53 @@ export class Player {
   /**
    * Starts a new hop towards the given direction.
    *
+   * The hop is trimmed to whatever the world allows: hopping straight at a
+   * house lands the frog against its wall rather than refusing to move.
+   *
    * @param {THREE.Vector2} direction Unit vector in the XY plane.
    */
   startMove(direction) {
-    this.moveState.active = true;
-    this.moveState.progress = 0;
-    this.moveState.startPosition.copy(this.group.position);
+    const state = this.moveState;
 
-    this.moveState.targetPosition.copy(this.group.position);
-    this.moveState.targetPosition.x += direction.x * JUMP_DISTANCE;
-    this.moveState.targetPosition.y += direction.y * JUMP_DISTANCE;
+    state.active = true;
+    state.progress = 0;
+    state.startPosition.copy(this.group.position);
 
-    // Keep the landing spot on the board. This is a clamp rather than a
-    // reject, so hopping straight into the edge simply stops at the edge
-    // instead of leaving the hero stranded in mid-hop limbo.
-    this.confine(this.moveState.targetPosition);
+    // Where a full-length hop would land.
+    const target = this.group.position.clone();
+    target.x += direction.x * JUMP_DISTANCE;
+    target.y += direction.y * JUMP_DISTANCE;
 
-    // If the clamped landing spot collapses onto the current position, there
-    // is nowhere to go — don't start a zero-length hop.
-    if (
-      Math.abs(this.moveState.targetPosition.x - this.group.position.x) < 1e-6 &&
-      Math.abs(this.moveState.targetPosition.y - this.group.position.y) < 1e-6
-    ) {
-      this.moveState.active = false;
+    // Let the world trim the hop. A null result means we are wedged and
+    // cannot move at all in this direction.
+    const resolved = this.resolveTarget(this.group.position, target);
+    if (!resolved) {
+      state.active = false;
       return;
     }
 
+    // Keep the landing spot on the board. This is a clamp rather than a
+    // reject, so hopping straight into the edge simply stops at the edge.
+    this.confine(resolved);
+
+    const distance = Math.hypot(
+      resolved.x - this.group.position.x,
+      resolved.y - this.group.position.y
+    );
+
+    // Nowhere to go — don't start a zero-length hop.
+    if (distance < 1e-3) {
+      state.active = false;
+      return;
+    }
+
+    state.targetPosition.copy(resolved);
+    // How much of a full hop this turned out to be. Drives the arc height and
+    // the timing, so a trimmed hop looks like a small hop, not a slow one.
+    state.fraction = Math.min(1, distance / JUMP_DISTANCE);
+
     // Face the direction of travel. atan2 gives 0 for +X and grows CCW.
-    this.moveState.rotation = Math.atan2(direction.y, direction.x);
+    state.rotation = Math.atan2(direction.y, direction.x);
   }
 
   /**
@@ -175,29 +206,29 @@ export class Player {
       const next = this.inputQueue.shift();
       this.startMove(next);
 
-      // startMove() bails out (leaving us idle) on a blocked or zero-length
-      // hop; on a blocked hop at the rim it may also have refused to move.
+      // startMove() leaves us idle when the hop is blocked or zero-length.
       if (!this.moveState.active) return;
-
-      // Reject the hop outright if the landing spot is inside a wall.
-      if (this.isBlocked(this.moveState.targetPosition)) {
-        this.moveState.active = false;
-        return;
-      }
 
       // The hop is confirmed — let it be heard.
       sound.jump();
     }
 
     const state = this.moveState;
-    state.progress = Math.min(1, state.progress + delta / this.moveDuration);
+
+    // A trimmed hop covers less ground, so it also takes less time and arcs
+    // lower. The floor keeps a wall-hugging hop from becoming a twitch.
+    const fraction = state.fraction || 1;
+    const duration = this.moveDuration * Math.max(0.45, fraction);
+
+    state.progress = Math.min(1, state.progress + delta / duration);
 
     // Linear interpolation across the ground plane.
     const x = THREE.MathUtils.lerp(state.startPosition.x, state.targetPosition.x, state.progress);
     const y = THREE.MathUtils.lerp(state.startPosition.y, state.targetPosition.y, state.progress);
 
     // Parabolic arc for the hop: sin() peaks at progress = 0.5.
-    const z = Math.sin(state.progress * Math.PI) * JUMP_HEIGHT;
+    const z =
+      Math.sin(state.progress * Math.PI) * JUMP_HEIGHT * Math.max(0.5, fraction);
 
     this.group.position.set(x, y, z);
 

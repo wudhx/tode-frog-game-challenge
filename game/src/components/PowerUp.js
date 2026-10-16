@@ -18,14 +18,16 @@ export const POWERUP_FLOAT = 46;
 /**
  * Every power-up archetype.
  *
- * `duration` is how long the effect lasts once collected; `multiplier` is
- * what it does to the relevant gameplay value while active.
+ * `detail` is the plain-language explanation shown when the pickup is
+ * collected — it spells out the actual numbers, so the player never has to
+ * guess what a gem or a bubble does.
  */
 export const POWERUP_TYPES = {
   speed: {
     key: 'speed',
     label: 'Speed',
     blurb: 'Hop faster',
+    detail: 'Hop cooldown cut to 55%, so you move almost twice as often.',
     duration: 8,
     color: 0xffd23f,
     multiplier: 0.55,
@@ -34,6 +36,7 @@ export const POWERUP_TYPES = {
     key: 'shield',
     label: 'Shield',
     blurb: 'Invincible',
+    detail: 'Insects cannot end your run while the shield holds.',
     duration: 6,
     color: 0x4da6ff,
     multiplier: 1,
@@ -42,6 +45,7 @@ export const POWERUP_TYPES = {
     key: 'range',
     label: 'Range',
     blurb: 'Bigger blast',
+    detail: 'Your tongue blast reaches 1.9x further.',
     duration: 10,
     color: 0xff8c1a,
     multiplier: 1.9,
@@ -50,6 +54,7 @@ export const POWERUP_TYPES = {
     key: 'freeze',
     label: 'Freeze',
     blurb: 'Slow insects',
+    detail: 'Every insect drops to 35% speed.',
     duration: 6,
     color: 0x8ee8ff,
     multiplier: 0.35,
@@ -259,23 +264,34 @@ export class PowerUpManager {
     this.buildHud();
   }
 
-  /** Creates the row of effect chips along the bottom of the screen. */
+  /** Creates the effect chips and the pickup card. */
   buildHud() {
     this.hud = document.createElement('div');
     this.hud.className = 'effects';
     document.body.appendChild(this.hud);
 
+    // Transient card explaining a pickup the moment it is collected.
+    this.toast = document.createElement('div');
+    this.toast.className = 'pickup-toast';
+    this.toast.style.display = 'none';
+    document.body.appendChild(this.toast);
+    this.toastTimer = 0;
+
     /** @type {Record<string, HTMLElement>} */
     this.chips = {};
     for (const key of TYPE_KEYS) {
+      const type = POWERUP_TYPES[key];
+
       const chip = document.createElement('div');
       chip.className = 'effect';
       chip.dataset.type = key;
-      chip.style.setProperty('--chip', `#${POWERUP_TYPES[key].color.toString(16).padStart(6, '0')}`);
+      chip.style.setProperty('--chip', `#${type.color.toString(16).padStart(6, '0')}`);
+      // Hovering a chip repeats the full explanation.
+      chip.title = `${type.label} — ${type.detail} Lasts ${type.duration}s.`;
 
       const name = document.createElement('span');
       name.className = 'effect-name';
-      name.textContent = POWERUP_TYPES[key].label;
+      name.textContent = `${type.label} · ${type.blurb}`;
 
       const time = document.createElement('span');
       time.className = 'effect-time';
@@ -286,6 +302,32 @@ export class PowerUpManager {
       this.hud.appendChild(chip);
       this.chips[key] = { chip, time };
     }
+  }
+
+  /**
+   * Pops up a card describing the power-up that was just collected, spelling
+   * out what it actually does and for how long.
+   *
+   * @param {typeof POWERUP_TYPES[keyof typeof POWERUP_TYPES]} type Type taken.
+   */
+  showPickupCard(type) {
+    const hex = `#${type.color.toString(16).padStart(6, '0')}`;
+    this.toast.innerHTML = [
+      `<div class="pickup-name" style="color:${hex}">${type.label} — ${type.blurb}</div>`,
+      `<div class="pickup-detail">${type.detail}</div>`,
+      `<div class="pickup-duration">Active for ${type.duration} seconds</div>`,
+    ].join('');
+
+    // Re-trigger the entrance animation even if a card is already on screen.
+    this.toast.style.display = 'block';
+    this.toast.classList.remove('is-shown');
+    void this.toast.offsetWidth;
+    this.toast.classList.add('is-shown');
+
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => {
+      this.toast.style.display = 'none';
+    }, 3000);
   }
 
   /**
@@ -330,6 +372,8 @@ export class PowerUpManager {
       if (Math.hypot(dx, dy) <= PICKUP_RADIUS) {
         pickup.collected = true;
         this.effects[pickup.typeKey] = pickup.type.duration;
+        // Tell the player what they just picked up, and what it does.
+        this.showPickupCard(pickup.type);
         sound.powerUp();
       }
     }

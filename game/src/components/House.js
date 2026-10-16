@@ -14,7 +14,8 @@ const PLAYER_KEEPOUT = TILE_SIZE * 2;
  *
  * @param {THREE.Object3D} template The loaded house scene to clone.
  * @param {THREE.Vector2} position Where to place the house.
- * @returns {THREE.Object3D} The positioned clone.
+ * @returns {{ object: THREE.Object3D, radius: number }} The positioned clone
+ *   plus the radius of the circle it actually occupies on the ground.
  */
 function placeHouse(template, position) {
   // Outer pivot carries the horizontal facing (rotation around the world Z
@@ -41,7 +42,19 @@ function placeHouse(template, position) {
 
   pivot.position.set(position.x, position.y, 0);
 
-  return pivot;
+  // Measure the house where it now stands. Deriving the collision circle from
+  // the real model means the hero can hop right up against a wall, instead of
+  // being stopped by a hard-coded radius that was far larger than the house.
+  pivot.updateMatrixWorld(true);
+  const placed = new THREE.Box3().setFromObject(pivot);
+  const radius = Math.max(
+    Math.abs(placed.max.x - position.x),
+    Math.abs(position.x - placed.min.x),
+    Math.abs(placed.max.y - position.y),
+    Math.abs(position.y - placed.min.y)
+  );
+
+  return { object: pivot, radius };
 }
 
 /**
@@ -83,9 +96,9 @@ export async function addHouses(housesGroup, playerGroup) {
 
   const houses = [];
   for (const slot of placed) {
-    const house = placeHouse(template, slot.position);
-    housesGroup.add(house);
-    houses.push({ object: house, position: slot.position });
+    const { object, radius } = placeHouse(template, slot.position);
+    housesGroup.add(object);
+    houses.push({ object, position: slot.position, radius });
   }
 
   return houses;
@@ -95,14 +108,17 @@ export async function addHouses(housesGroup, playerGroup) {
  * Checks whether a candidate ground position is blocked by any house.
  *
  * @param {THREE.Vector3} position The desired next position.
- * @param {Array<{position: THREE.Vector2}>} houses Placed house records.
- * @param {number} radius How close is "too close".
+ * @param {Array<{position: THREE.Vector2, radius: number}>} houses Placed
+ *   house records, each carrying its own footprint radius.
+ * @param {number} padding Radius of the thing being moved (frog, insect…),
+ *   added to the house radius so bodies stop when they touch, not when their
+ *   centres meet.
  * @returns {boolean} True if the position collides with a house.
  */
-export function collidesWithHouse(position, houses, radius) {
+export function collidesWithHouse(position, houses, padding) {
   return houses.some((house) => {
     const dx = position.x - house.position.x;
     const dy = position.y - house.position.y;
-    return Math.sqrt(dx * dx + dy * dy) < radius;
+    return Math.hypot(dx, dy) < house.radius + padding;
   });
 }

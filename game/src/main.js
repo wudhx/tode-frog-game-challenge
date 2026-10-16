@@ -18,19 +18,26 @@ import './style.css';
 // ---------------------------------------------------------------------------
 /** Enemy vs. player: how close counts as a fatal touch. */
 const PLAYER_HIT_DISTANCE = 45;
-/** Enemy vs. enemy: how close two monsters may get. */
-const ENEMY_HIT_DISTANCE = 55;
-/** Player vs. house: the hero cannot hop into a wall. */
-const PLAYER_HOUSE_DISTANCE = 70;
-/** Enemy vs. house: keep them from walking through walls. */
-const ENEMY_HOUSE_DISTANCE = 75;
+/** Enemy vs. enemy: how close two insects may get. */
+const ENEMY_HIT_DISTANCE = 45;
 
 /**
- * How far from the origin the hero may roam. The board is
- * TILE_COUNT * TILE_SIZE wide, so this leaves a half-tile of ground in front
- * of the invisible wall instead of letting the frog hop into empty space.
+ * How far from the origin anything may roam. The board is
+ * TILE_COUNT * TILE_SIZE wide, so this stops at the *centre* of the outermost
+ * tile: the hero can stand on the very last row of grass, but never hop off
+ * the edge into empty space.
  */
-const PLAYFIELD_HALF = (TILE_COUNT * TILE_SIZE) / 2 - TILE_SIZE;
+const PLAYFIELD_HALF = (TILE_COUNT * TILE_SIZE) / 2 - TILE_SIZE * 0.5;
+
+/**
+ * Extra breathing room kept between a body and a house wall. Collision adds
+ * the house's own measured radius to the mover's radius, so bodies stop when
+ * they *touch* instead of when their centres meet — which is what made the
+ * frog freeze a visible distance away from every wall.
+ */
+const WALL_CLEARANCE = 6;
+/** Power-ups need less clearance than a body does. */
+const POWERUP_WALL_CLEARANCE = 26;
 
 /**
  * Clamps a ground position into the playfield. Used as a hard backstop so a
@@ -262,17 +269,88 @@ function playerHitsEnemy() {
  * @returns {boolean} True if the spot is free.
  */
 function canEnemyStep(x, y, self) {
-  // Walls block movement.
+  // Walls block movement. The insect's own body radius is added to the
+  // house's, so it comes to rest flush against the wall.
   const probe = new THREE.Vector3(x, y, 0);
-  if (collidesWithHouse(probe, houses, ENEMY_HOUSE_DISTANCE)) return false;
+  if (collidesWithHouse(probe, houses, self.type.radius * 0.7 + WALL_CLEARANCE)) {
+    return false;
+  }
 
-  // Other enemies block movement.
+  // Other insects block movement.
   return !enemies.some((other) => {
     if (other === self) return false;
     return (
       Math.hypot(other.position.x - x, other.position.y - y) < ENEMY_HIT_DISTANCE
     );
   });
+}
+
+/**
+ * Whether a body of the given radius would be standing inside a wall.
+ *
+ * @param {THREE.Vector3} position Candidate ground position.
+ * @param {number} radius Radius of the body being moved.
+ * @returns {boolean} True if it would overlap a house.
+ */
+function hitsWall(position, radius) {
+  return collidesWithHouse(position, houses, radius + WALL_CLEARANCE);
+}
+
+/**
+ * Trims a hop so it lands as close as possible to its target without ending
+ * up inside a house.
+ *
+ * Rejecting the hop outright is what left the frog stranded a whole hop-length
+ * away from every wall. Instead we walk back along the hop direction and keep
+ * the furthest spot that is still clear, so he hops right up to the wall.
+ *
+ * @param {THREE.Vector3} from Where the hop starts.
+ * @param {THREE.Vector3} target Where an unobstructed hop would land.
+ * @returns {THREE.Vector3|null} The trimmed landing spot, or null if wedged.
+ */
+function trimHopToWalls(from, target) {
+  if (!hitsWall(target, player.radius)) return target;
+
+  // Fine steps keep the frog from stopping noticeably short of the wall.
+  for (let fraction = 0.95; fraction > 0.02; fraction -= 0.04) {
+    const candidate = from.clone().lerp(target, fraction);
+    if (!hitsWall(candidate, player.radius)) return candidate;
+  }
+
+  return null;
+}
+
+/**
+ * Nudges a wedged insect back out into the open.
+ *
+ * Without this, an insect that somehow ends up inside a house's collision
+ * circle fails every candidate step and freezes there for the rest of the run.
+ *
+ * @param {import('./components/Enemy.js').Enemy} enemy The stuck insect.
+ */
+function unstickEnemy(enemy) {
+  const current = enemy.position;
+
+  let nearest = null;
+  let nearestDistance = Infinity;
+  for (const house of houses) {
+    const distance = Math.hypot(
+      current.x - house.position.x,
+      current.y - house.position.y
+    );
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearest = house;
+    }
+  }
+
+  if (!nearest || nearestDistance < 1e-3) return;
+
+  // Step directly away from the offending wall.
+  const awayX = (current.x - nearest.position.x) / nearestDistance;
+  const awayY = (current.y - nearest.position.y) / nearestDistance;
+  current.x += awayX * 4;
+  current.y += awayY * 4;
 }
 
 /**
@@ -284,7 +362,7 @@ function canEnemyStep(x, y, self) {
  */
 function isPowerUpSpotFree(x, y) {
   const probe = new THREE.Vector3(x, y, 0);
-  if (collidesWithHouse(probe, houses, PLAYER_HOUSE_DISTANCE)) return false;
+  if (collidesWithHouse(probe, houses, POWERUP_WALL_CLEARANCE)) return false;
 
   // Never drop a pickup right under the hero's feet — that would be a
   // freebie instead of a reward for exploring.
@@ -329,10 +407,10 @@ renderer.setAnimationLoop(() => {
   attack.radius = params.attackRadius * boosts.attackRadius;
 
   // --- Player movement ----------------------------------------------------
-  // The hero may not hop into a wall, nor off the edge of the board. Clamping
-  // the landing spot (rather than only rejecting the hop) means a hero
-  // standing on the boundary stays put instead of building up illegal moves.
-  player.isBlocked = (target) => collidesWithHouse(target, houses, PLAYER_HOUSE_DISTANCE);
+  // Hops are trimmed so the frog stops flush against a wall rather than being
+  // refused a whole hop away from it, and the landing spot is clamped so he
+  // can never leave the board.
+  player.resolveTarget = trimHopToWalls;
   player.confine = clampToPlayfield;
   player.update(delta);
 
@@ -400,18 +478,35 @@ renderer.setAnimationLoop(() => {
     // would stall just outside the kill radius (distance ~45) and the run
     // could never end. Letting them close the gap is what makes the
     // "Game Over" check fire reliably.
-    if (canEnemyStep(current.x + dx, current.y + dy, enemy)) {
-      current.x += dx;
-      current.y += dy;
-    } else if (canEnemyStep(current.x + dx, current.y, enemy)) {
-      // Slide along X to walk around a wall or a crowded neighbour.
-      current.x += dx;
-    } else if (canEnemyStep(current.x, current.y + dy, enemy)) {
-      // Slide along Y instead.
-      current.y += dy;
+    //
+    // They do have to get around walls, though. We try, in order: straight at
+    // the hero, each axis on its own, then a perpendicular deflection either
+    // way. That last pair is what lets an insect slide along a wall or squeeze
+    // out of a corner instead of grinding against it.
+    const candidates = [
+      [dx, dy],
+      [dx, 0],
+      [0, dy],
+      [dy, -dx],
+      [-dy, dx],
+    ];
+
+    let moved = false;
+    for (const [moveX, moveY] of candidates) {
+      if (moveX === 0 && moveY === 0) continue;
+      if (canEnemyStep(current.x + moveX, current.y + moveY, enemy)) {
+        current.x += moveX;
+        current.y += moveY;
+        moved = true;
+        break;
+      }
     }
 
-    // Monsters hunt, but they stay on the board like everyone else.
+    // Wedged with no legal step in any direction: back out of the wall so it
+    // can rejoin the chase next frame instead of freezing there forever.
+    if (!moved) unstickEnemy(enemy);
+
+    // Insects hunt, but they stay on the board like everyone else.
     clampToPlayfield(current);
   });
 
