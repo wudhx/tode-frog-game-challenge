@@ -139,6 +139,58 @@ canvas.game {
   letter-spacing: 0.2px;
 }
 
+/* --- Shelter readout (shown while inside a house) ------------------------ */
+.shelter-readout {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  color: #1b4332;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  user-select: none;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.shelter-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #2f6b2a;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.shelter-bar {
+  width: 120px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(20, 20, 20, 0.12);
+  overflow: hidden;
+}
+
+.shelter-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #e5484d;
+  transition: width 0.25s ease;
+}
+
+.shelter-rate {
+  font-size: 10px;
+  font-weight: 600;
+  color: #a04040;
+  text-align: right;
+}
+
 /* --- Game over overlay --------------------------------------------------- */
 .game-over {
   position: fixed;

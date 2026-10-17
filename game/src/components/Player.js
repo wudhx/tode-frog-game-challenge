@@ -1,6 +1,73 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { sound } from './Sound.js';
+
+// ---------------------------------------------------------------------------
+// Procedural hero
+// ---------------------------------------------------------------------------
+/**
+ * Builds the hero entirely from primitives.
+ *
+ * The frog used to be a 1.8 MB GLB, but that file was unreliable to serve from
+ * GitHub Pages for some players — the request got dropped and the hero never
+ * appeared. Geometry built in code is instant, tiny, and always renders, so the
+ * frog can never silently vanish again.
+ *
+ * Assembled directly in our Z-up world, facing +X, so the yaw pivot can spin
+ * him to face his travel direction.
+ *
+ * @returns {THREE.Group}
+ */
+function buildFrog() {
+  const frog = new THREE.Group();
+
+  const skin = new THREE.MeshStandardMaterial({ color: 0x57b357, roughness: 0.6 });
+  const belly = new THREE.MeshStandardMaterial({ color: 0x9ccc65, roughness: 0.7 });
+  const footMat = new THREE.MeshStandardMaterial({ color: 0x3f8f3f, roughness: 0.7 });
+  const eyeWhite = new THREE.MeshStandardMaterial({ color: 0xf5f7f2, roughness: 0.4 });
+  const pupil = new THREE.MeshStandardMaterial({ color: 0x14110f, roughness: 0.3 });
+
+  // Fat, low-sitting body.
+  const body = new THREE.Mesh(new THREE.SphereGeometry(16, 20, 16), skin);
+  body.scale.set(1.3, 1, 0.82);
+  body.position.z = 13;
+  frog.add(body);
+
+  // Lighter belly on the front-lower side.
+  const bellyMesh = new THREE.Mesh(new THREE.SphereGeometry(11, 16, 14), belly);
+  bellyMesh.scale.set(1.1, 1, 0.7);
+  bellyMesh.position.set(3, 0, 7);
+  frog.add(bellyMesh);
+
+  // Two eyes on top, facing +X.
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(6, 14, 12), eyeWhite);
+    eye.position.set(9, side * 9, 25);
+    frog.add(eye);
+    const pup = new THREE.Mesh(new THREE.SphereGeometry(3, 10, 8), pupil);
+    pup.position.set(12, side * 9, 27);
+    frog.add(pup);
+  }
+
+  // Four flattened foot pads at the corners.
+  for (const fx of [15, -15]) {
+    for (const fy of [-12, 12]) {
+      const foot = new THREE.Mesh(new THREE.SphereGeometry(7, 12, 10), footMat);
+      foot.scale.set(1.3, 1, 0.5);
+      foot.position.set(fx, fy, 2.5);
+      frog.add(foot);
+    }
+  }
+
+  // Two raised haunches at the back for a frog silhouette.
+  for (const side of [-1, 1]) {
+    const haunch = new THREE.Mesh(new THREE.SphereGeometry(11, 14, 12), skin);
+    haunch.scale.set(1, 1, 0.9);
+    haunch.position.set(-13, side * 12, 12);
+    frog.add(haunch);
+  }
+
+  return frog;
+}
 
 // ---------------------------------------------------------------------------
 // Movement tuning constants
@@ -89,38 +156,22 @@ export class Player {
   }
 
   /**
-   * Loads the tode.glb model and mounts it inside the player group.
+   * Builds the hero model.
+   *
+   * Kept synchronous and dependency-free: the frog is made of primitives, so he
+   * always appears even where a large GLB would fail to download.
    */
   load() {
-    const loader = new GLTFLoader();
+    const model = buildFrog();
 
-    // Resolve against Vite's base URL so the asset loads correctly both in
-    // dev (/) and when deployed under a sub-path (e.g. GitHub Pages).
-    loader.load(`${import.meta.env.BASE_URL}models/tode.glb`, (gltf) => {
-      const model = gltf.scene;
+    // Fixed footprint radius — the frog is a known size, so collision uses his
+    // real extent directly instead of guessing from a loaded mesh.
+    const box = new THREE.Box3().setFromObject(model);
+    this.radius = Math.max(box.max.x - box.min.x, box.max.y - box.min.y) / 2;
 
-      // The asset is authored "lying down" for a Y-up world; rotate it into
-      // our Z-up coordinate system so the frog stands upright.
-      model.rotation.x = Math.PI / 2;
-
-      // Scale the frog to a sensible size for the map.
-      model.scale.setScalar(20);
-
-      // Sit the model exactly on the ground plane (Z = 0) by measuring how
-      // far the geometry extends below its own origin after rotation.
-      model.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(model);
-      model.position.z -= box.min.z;
-
-      // Half of the widest horizontal extent is the frog's footprint radius.
-      // main.js adds this to a house's radius so he stops when he *touches*
-      // a wall rather than when his centre reaches it.
-      this.radius = Math.max(box.max.x - box.min.x, box.max.y - box.min.y) / 2;
-
-      this.model = model;
-      this.yaw.add(model);
-      this.loaded = true;
-    });
+    this.model = model;
+    this.yaw.add(model);
+    this.loaded = true;
   }
 
   /**

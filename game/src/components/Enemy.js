@@ -379,6 +379,11 @@ export class Enemy {
     this.disengageDirection = new THREE.Vector2(1, 0);
 
     this.loaded = true;
+
+    // Wander state: when the hero is hidden, chasing insects lose their
+    // target and drift aimlessly until he shows himself again.
+    this.wanderTarget = new THREE.Vector2(0, 0);
+    this.wanderTimer = 0;
   }
 
   /**
@@ -444,6 +449,23 @@ export class Enemy {
     if (this.state === 'disengaged') {
       this.disengageTimer += delta;
     }
+  }
+
+  /**
+   * Picks a fresh point to drift towards while the hero is hidden.
+   *
+   * Called by the main loop on a timer so a hidden insect wanders instead of
+   * homing.
+   *
+   * @param {number} x Current world X.
+   * @param {number} y Current world Y.
+   * @param {() => number} rand Random source (defaults to Math.random).
+   */
+  pickWander(x, y, rand = Math.random) {
+    const angle = rand() * Math.PI * 2;
+    const dist = 120 + rand() * 220;
+    this.wanderTarget.set(x + Math.cos(angle) * dist, y + Math.sin(angle) * dist);
+    this.wanderTimer = 1.5 + rand() * 1.5;
   }
 
   /**

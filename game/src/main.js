@@ -8,6 +8,9 @@ import {
   addHouses,
   collidesWithObstacle,
   HOUSE_ATTACK_RANGE,
+  HOUSE_DURABILITY,
+  HOUSE_HIT_DAMAGE,
+  HOUSE_HIT_INTERVAL,
 } from './components/House.js';
 import { Scenery, BUSH_COOLDOWN } from './components/Scenery.js';
 import { Attack } from './components/Attack.js';
@@ -37,14 +40,8 @@ const WALL_CLEARANCE = 3;
 const POWERUP_WALL_CLEARANCE = 26;
 
 // --- House ----------------------------------------------------------------
-/** Seconds of invulnerability the hero gets inside a house. */
-const HOUSE_INVULN_DURATION = 1.5;
-/** Cooldown between house uses. */
-const HOUSE_COOLDOWN = 30;
 /** Fraction of the footprint radius that counts as "inside". */
 const HOUSE_INTERIOR_RADIUS_RATIO = 0.9;
-/** HP restored on entering a house. */
-const HOUSE_HEAL = HEART_PICKUP;
 /** How translucent the house goes while the hero is inside it. */
 const HOUSE_INTERIOR_OPACITY = 0.3;
 
@@ -127,6 +124,7 @@ const map = new Map(scene);
 
 /** Houses, once loaded. Each has hp, position, radius, alive. */
 let houses = [];
+let currentHouse = null;
 /** Scenery (trees, bushes, flowers, ponds), once loaded. */
 let scenery = null;
 
@@ -161,6 +159,11 @@ const camera = createCamera(player.group);
 
 const score = new Score();
 const health = new Health();
+
+// Shelter durability readout shown while the hero is inside a house.
+const shelterReadout = document.createElement('div');
+shelterReadout.className = 'shelter-readout';
+document.body.appendChild(shelterReadout);
 const highScores = new HighScores();
 const attack = new Attack(scene, player);
 const powerUps = new PowerUpManager(scene);
@@ -168,12 +171,6 @@ const powerUps = new PowerUpManager(scene);
 // ---------------------------------------------------------------------------
 // Per-frame interaction state
 // ---------------------------------------------------------------------------
-/** Tracks the invulnerability window the house gives the hero. */
-const houseShield = {
-  active: false,
-  timer: 0,
-  cooldown: 0,
-};
 /** Tracks the bush hide / expose window. */
 const bushState = {
   active: false,
@@ -302,9 +299,6 @@ function resetGame() {
   powerUps.reset();
 
   // Reset interaction state.
-  houseShield.active = false;
-  houseShield.timer = 0;
-  houseShield.cooldown = 0;
   bushState.active = false;
   bushState.bush = null;
   bushState.timer = 0;
@@ -618,6 +612,7 @@ renderer.setAnimationLoop(() => {
       break;
     }
   }
+  currentHouse = inHouse;
 
   // Fade whichever house the hero is standing in, so he never vanishes inside
   // the model.
@@ -626,22 +621,21 @@ renderer.setAnimationLoop(() => {
     house.fadeTo(house === inHouse ? HOUSE_INTERIOR_OPACITY : 1, delta);
   }
 
-  if (inHouse && !houseShield.active && houseShield.cooldown <= 0) {
-    houseShield.active = true;
-    houseShield.timer = HOUSE_INVULN_DURATION;
-    houseShield.cooldown = HOUSE_COOLDOWN;
-    health.heal(HOUSE_HEAL);
-    hud.showAction(`Safe inside! +${HOUSE_HEAL} HP`, 'house', '#a3e635');
-    sound.shield();
-  }
-  if (houseShield.active) {
-    houseShield.timer = Math.max(0, houseShield.timer - delta);
-    if (houseShield.timer === 0) {
-      houseShield.active = false;
-    }
-  }
-  if (houseShield.cooldown > 0) {
-    houseShield.cooldown = Math.max(0, houseShield.cooldown - delta);
+  // --- House interaction --------------------------------------------------
+  // Protection is continuous while the house still has structural durability.
+  // Insects whack the house, not the hero, but every hit drains that bar.
+  // When it reaches zero the house collapses and the frog is exposed again.
+  if (inHouse) {
+    const pct = Math.max(0, Math.round((inHouse.hp / inHouse.maxHp) * 100));
+    const drainPerSec = Math.round(HOUSE_HIT_DAMAGE / HOUSE_HIT_INTERVAL);
+    shelterReadout.innerHTML = [
+      '<div class="shelter-label">House durability</div>',
+      `<div class="shelter-bar"><span style="width:${pct}%"></span></div>`,
+      `<div class="shelter-rate">-${drainPerSec}% / second</div>`,
+    ].join('');
+    shelterReadout.style.display = 'block';
+  } else {
+    shelterReadout.style.display = 'none';
   }
 
   // --- Bush interaction ---------------------------------------------------
@@ -840,25 +834,12 @@ renderer.setAnimationLoop(() => {
   let hintState = null;
 
   if (inHouse) {
-    if (houseShield.active) {
-      hintState = {
-        key: 'house',
-        tone: 'active',
-        text: `Safe inside · ${houseShield.timer.toFixed(1)}s left`,
-      };
-    } else if (houseShield.cooldown > 0) {
-      hintState = {
-        key: 'house',
-        tone: 'cooldown',
-        text: `This house is cooling down · ${Math.ceil(houseShield.cooldown)}s`,
-      };
-    } else {
-      hintState = {
-        key: 'house',
-        tone: 'ready',
-        text: `Walk in to shelter: ${HOUSE_INVULN_DURATION}s invulnerable + ${HOUSE_HEAL} HP`,
-      };
-    }
+    const pct = Math.max(0, Math.round((inHouse.hp / inHouse.maxHp) * 100));
+    hintState = {
+      key: 'house',
+      tone: pct > 30 ? 'active' : 'warn',
+      text: `Safe inside · ${pct}% durability`,
+    };
   }
 
   if (!hintState && inBush) {
@@ -1027,6 +1008,7 @@ renderer.setAnimationLoop(() => {
   // =======================================================================
   // Slow factor stacks with the existing freeze power-up.
   const pondSlowFactor = powerUps.pondSlowTimer > 0 ? 0.4 : 1;
+  const playerHidden = bushState.active;
 
   for (const enemy of enemies) {
     enemy.setBaseSpeed(params.enemySpeed * boosts.enemySpeed * pondSlowFactor);
@@ -1034,7 +1016,7 @@ renderer.setAnimationLoop(() => {
 
     const current = enemy.position;
 
-    if (enemy.state === 'chasing') {
+    if (enemy.state === 'chasing' && !bushState.active) {
       enemy.rememberPlayerPosition(playerPos2.x, playerPos2.y);
     }
 
@@ -1049,6 +1031,14 @@ renderer.setAnimationLoop(() => {
     // below are Vector2, and Vector3.distanceTo(Vector2) yields NaN because
     // the prop has no `z`.
     const distanceTo = (p) => Math.hypot(current.x - p.x, current.y - p.y);
+
+    // When the hero is hidden in a bush, chasing insects lose his trail and
+    // wander aimlessly instead of homing on his last position.
+    if (playerHidden) {
+      enemy.wanderTimer -= delta;
+      if (enemy.wanderTimer <= 0) enemy.pickWander(current.x, current.y);
+      target = { x: enemy.wanderTarget.x, y: enemy.wanderTarget.y };
+    }
 
     // 1. House whacking — only when the hero is actually sheltering inside
     //    that house. Insects used to chew through any house they happened to
@@ -1167,7 +1157,7 @@ renderer.setAnimationLoop(() => {
   const safe =
     boosts.shielded ||
     health.shielded ||
-    houseShield.active ||
+    inHouse ||
     bushState.active;
 
   if (!safe && playerHitsEnemy()) {
@@ -1256,7 +1246,7 @@ window.__hud = {
   get playerPos2() { return { x: player.position.x, y: player.position.y }; },
 
   state: {
-    get houseShield() { return houseShield; },
+    get inHouse() { return currentHouse; },
     get bushState() { return bushState; },
     get flowerState() { return flowerState; },
     get pondState() { return pondState; },

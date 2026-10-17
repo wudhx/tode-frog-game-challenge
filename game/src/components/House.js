@@ -7,8 +7,12 @@ export const HOUSE_SCALE = 65;
 
 /** How many houses are scattered across the board. */
 export const HOUSE_COUNT = 4;
-/** Hits a house takes before it falls. */
-export const HOUSE_HP = 5;
+/** Total structural durability a house starts with. */
+export const HOUSE_DURABILITY = 100;
+/** How much each insect hit drains from that durability. */
+export const HOUSE_HIT_DAMAGE = 8;
+/** How many cells are drawn in the floating health bar. */
+const HOUSE_BAR_CELLS = 5;
 /** How close an insect has to be before it switches to whacking a house. */
 export const HOUSE_ATTACK_RANGE = 110;
 /** Seconds between hits a single insect can land on a house. */
@@ -24,7 +28,7 @@ const HOUSE_SPACING = TILE_SIZE * 5;
  * Paints a horizontal health bar texture for a house. Five red cells on a dark
  * background; the bar's mesh then picks a single crop width based on hp.
  *
- * @param {number} filledCells How many of the 5 cells are currently red.
+ * @param {number} filledCells How many of the cells are currently red.
  * @returns {THREE.CanvasTexture}
  */
 function healthBarTexture(filledCells) {
@@ -42,8 +46,8 @@ function healthBarTexture(filledCells) {
   // Red cells.
   const padX = 6;
   const padY = 5;
-  const cellWidth = (canvas.width - padX * 2) / HOUSE_HP;
-  for (let i = 0; i < HOUSE_HP; i++) {
+  const cellWidth = (canvas.width - padX * 2) / HOUSE_BAR_CELLS;
+  for (let i = 0; i < HOUSE_BAR_CELLS; i++) {
     const x = padX + i * cellWidth + 1;
     const y = padY;
     const w = cellWidth - 2;
@@ -71,8 +75,8 @@ class House {
    */
   constructor(template, position) {
     this.position = position.clone();
-    this.hp = HOUSE_HP;
-    this.maxHp = HOUSE_HP;
+    this.hp = HOUSE_DURABILITY;
+    this.maxHp = HOUSE_DURABILITY;
     this.alive = true;
     this.attackCooldown = 0;
     this.damagedFlash = 0;
@@ -167,16 +171,16 @@ class House {
   }
 
   /**
-   * Lands one hit on the house. When hp reaches zero, the house collapses
-   * into a grey ruin.
+   * Lands one hit on the house, draining structural durability.
    *
    * @returns {boolean} True if the house is now in ruins.
    */
   takeDamage() {
     if (!this.alive) return false;
-    this.hp -= 1;
+    this.hp -= HOUSE_HIT_DAMAGE;
     this.damagedFlash = 0.5;
-    this.healthBar.material.map = healthBarTexture(this.hp);
+    const filled = Math.max(0, Math.ceil((this.hp / HOUSE_DURABILITY) * HOUSE_BAR_CELLS));
+    this.healthBar.material.map = healthBarTexture(filled);
     this.healthBar.material.needsUpdate = true;
 
     if (this.hp <= 0) {
