@@ -121,7 +121,7 @@ export class Health {
    * @param {number} duration Seconds the effect lasts.
    * @param {string} [label] Source name, shown in the HUD.
    */
-  addRegen(rate, duration, label = '回血') {
+  addRegen(rate, duration, label = 'Regen') {
     const existing = this.regenBuffs.find((b) => b.label === label);
     if (existing) {
       existing.remaining = Math.max(existing.remaining, duration);

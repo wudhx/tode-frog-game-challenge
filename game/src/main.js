@@ -546,17 +546,17 @@ function triggerPondBonus() {
 
   if (roll < 0.4) {
     health.heal(30);
-    hud.showAction('池塘祝福：恢复 30 HP', 'heart', '#e5484d');
+    hud.showAction('Pond blessing: +30 HP', 'heart', '#e5484d');
     sound.heal();
   } else if (roll < 0.7) {
     for (const enemy of enemies) {
       enemy.fleeFrom(player.position.x, player.position.y);
     }
-    hud.showAction('池塘驱散：昆虫全部逃离', 'pond', '#4da6ff');
+    hud.showAction('Pond repels the swarm!', 'pond', '#4da6ff');
     sound.shield();
   } else {
     powerUps.pondSlowTimer = 12;
-    hud.showAction('池塘寒流：昆虫减速 12 秒', 'freeze', '#8ee8ff');
+    hud.showAction('Pond chill: insects slowed for 12s', 'freeze', '#8ee8ff');
     sound.powerUp();
   }
 }
@@ -631,7 +631,7 @@ renderer.setAnimationLoop(() => {
     houseShield.timer = HOUSE_INVULN_DURATION;
     houseShield.cooldown = HOUSE_COOLDOWN;
     health.heal(HOUSE_HEAL);
-    hud.showAction(`进屋避难！恢复 ${HOUSE_HEAL} HP`, 'house', '#a3e635');
+    hud.showAction(`Safe inside! +${HOUSE_HEAL} HP`, 'house', '#a3e635');
     sound.shield();
   }
   if (houseShield.active) {
@@ -676,7 +676,7 @@ renderer.setAnimationLoop(() => {
         bushState.exposed = true;
         bushState.active = false;
         inBush.cooldown = BUSH_COOLDOWN;
-        hud.showAction('被发现了！昆虫冲过来了', 'bush', '#ff6b6b', 2500);
+        hud.showAction('Spotted! Insects are closing in', 'bush', '#ff6b6b', 2500);
         sound.hurt();
       }
     }
@@ -717,7 +717,7 @@ renderer.setAnimationLoop(() => {
         f.regrowTimer = FLOWER_REGROW;
         const spot = findFlowerDropSpot(f.position.x, f.position.y);
         powerUps.spawnAt(spot.x, spot.y, ['speed', 'range', 'freeze', 'shield'], 1.5);
-        hud.showAction('花朵绽放！掉落 1.5 倍强化道具', 'flower', '#ff6b9d');
+        hud.showAction('A flower blooms into a 1.5x power-up!', 'flower', '#ff6b9d');
         sound.powerUp();
         flowerState.flower = null;
         flowerState.timer = 0;
@@ -844,19 +844,19 @@ renderer.setAnimationLoop(() => {
       hintState = {
         key: 'house',
         tone: 'active',
-        text: `屋内安全中 · 剩余 ${houseShield.timer.toFixed(1)}s`,
+        text: `Safe inside · ${houseShield.timer.toFixed(1)}s left`,
       };
     } else if (houseShield.cooldown > 0) {
       hintState = {
         key: 'house',
         tone: 'cooldown',
-        text: `这栋房子冷却中 · 还有 ${Math.ceil(houseShield.cooldown)}s`,
+        text: `This house is cooling down · ${Math.ceil(houseShield.cooldown)}s`,
       };
     } else {
       hintState = {
         key: 'house',
         tone: 'ready',
-        text: `进屋避难：无敌 ${HOUSE_INVULN_DURATION}s + 回 ${HOUSE_HEAL} HP`,
+        text: `Walk in to shelter: ${HOUSE_INVULN_DURATION}s invulnerable + ${HOUSE_HEAL} HP`,
       };
     }
   }
@@ -867,14 +867,14 @@ renderer.setAnimationLoop(() => {
         key: 'bush',
         tone: 'danger',
         text: inBush.cooldown > 0
-          ? `这丛草已暴露 · 还有 ${Math.ceil(inBush.cooldown)}s`
-          : '被发现了！',
+          ? `This bush is blown · ${Math.ceil(inBush.cooldown)}s`
+          : 'Spotted!',
       };
     } else {
       hintState = {
         key: 'bush',
         tone: 'active',
-        text: `隐身中 · 剩余 ${bushState.timer.toFixed(1)}s`,
+        text: `Hidden · ${bushState.timer.toFixed(1)}s left`,
       };
     }
   }
@@ -884,12 +884,12 @@ renderer.setAnimationLoop(() => {
       ? {
           key: 'pond',
           tone: 'cooldown',
-          text: `池水冷却中 · 还有 ${Math.ceil(pondState.cooldown)}s`,
+          text: `This pond is cooling down · ${Math.ceil(pondState.cooldown)}s`,
         }
       : {
           key: 'pond',
           tone: 'active',
-          text: `泡在水中：每秒回 ${Math.round(POND_HEAL_PERCENT * 100)}% 生命，减伤 ${Math.round(POND_DAMAGE_SOAK * 100)}%`,
+          text: `In the water: +${Math.round(POND_HEAL_PERCENT * 100)}% HP/s, ${Math.round(POND_DAMAGE_SOAK * 100)}% damage soaked`,
         };
   }
 
@@ -898,12 +898,12 @@ renderer.setAnimationLoop(() => {
       ? {
           key: 'pond',
           tone: 'cooldown',
-          text: `这口池塘冷却中 · 还有 ${Math.ceil(pondState.cooldown)}s`,
+          text: `This pond is cooling down · ${Math.ceil(pondState.cooldown)}s`,
         }
       : {
           key: 'pond',
           tone: 'ready',
-          text: `走进水中：每秒回 ${Math.round(POND_HEAL_PERCENT * 100)}% 生命 + 随机加成`,
+          text: `Wade in: +${Math.round(POND_HEAL_PERCENT * 100)}% HP/s and a random bonus`,
         };
   }
 
@@ -912,12 +912,12 @@ renderer.setAnimationLoop(() => {
       ? {
           key: 'flower',
           tone: 'active',
-          text: `开花中 · 还需 ${Math.max(0, FLOWER_HARVEST_TIME - flowerState.timer).toFixed(1)}s`,
+          text: `Blooming · ${Math.max(0, FLOWER_HARVEST_TIME - flowerState.timer).toFixed(1)}s to go`,
         }
       : {
           key: 'flower',
           tone: 'ready',
-          text: `停留 ${FLOWER_HARVEST_TIME} 秒开花，掉落 1.5 倍道具`,
+          text: `Stay ${FLOWER_HARVEST_TIME}s to bloom a 1.5x power-up`,
         };
   }
 
@@ -928,12 +928,12 @@ renderer.setAnimationLoop(() => {
         ? {
             key: 'tree',
             tone: 'cooldown',
-            text: `这棵果树冷却中 · 还有 ${Math.ceil(tree.cooldown)}s`,
+            text: `This tree is resting · ${Math.ceil(tree.cooldown)}s`,
           }
         : {
             key: 'tree',
             tone: 'ready',
-            text: '用舌弹（空格）打果树可掉果实',
+            text: 'Tongue-blast (Space) a fruit tree to knock fruit loose',
           };
     }
   }
@@ -982,11 +982,11 @@ renderer.setAnimationLoop(() => {
       if (tree && distance < TREE_STRIKE_RANGE) {
         const outcome = scenery.dropFruit(tree);
         if (outcome === 'ok') {
-          hud.showAction('果树结果了！去吃吧', 'fruit', '#e5484d');
+          hud.showAction('Fruit dropped — go grab it!', 'fruit', '#e5484d');
           sound.powerUp();
         } else if (outcome === 'cooldown') {
           hud.showAction(
-            `这棵果树还在恢复 · ${Math.ceil(tree.cooldown)}s`,
+            `This tree is still recovering · ${Math.ceil(tree.cooldown)}s`,
             'tree',
             '#888780',
             1500
@@ -1003,9 +1003,9 @@ renderer.setAnimationLoop(() => {
   if (scenery) {
     const eaten = scenery.updateFruits(delta, player.position);
     if (eaten > 0) {
-      health.addRegen(FRUIT_REGEN_RATE, FRUIT_REGEN_DURATION, '果腹');
+      health.addRegen(FRUIT_REGEN_RATE, FRUIT_REGEN_DURATION, 'Fed');
       hud.showAction(
-        `吃下果实：${FRUIT_REGEN_DURATION} 秒内持续回血`,
+        `Fruit eaten: regenerating for ${FRUIT_REGEN_DURATION}s`,
         'fruit',
         '#e5484d'
       );
@@ -1064,7 +1064,7 @@ renderer.setAnimationLoop(() => {
             house.registerHit();
             sound.houseHit();
             if (destroyed) {
-              hud.showAction('房子被拆了！', 'house', '#e5484d', 2500);
+              hud.showAction('A house has been destroyed!', 'house', '#e5484d', 2500);
               // The ruin is gone from the scene; drop it from the enemy
               // collision list so insects stop pathing around a hole.
               enemyObstacles = enemyObstacles.filter((o) => o !== house);
@@ -1086,7 +1086,7 @@ renderer.setAnimationLoop(() => {
           bushState.bush.alive = false;
           bushState.bush.group.visible = false;
           bushState.bush.regrowTimer = 25; // bushes take longer to regrow than flowers
-          hud.showAction('草丛被拆散了', 'bush', '#ff6b6b');
+          hud.showAction('A bush was torn apart', 'bush', '#ff6b6b');
           sound.hurt();
         }
       }
@@ -1154,7 +1154,7 @@ renderer.setAnimationLoop(() => {
     if (scenery) {
       const grown = scenery.growFlowers();
       if (grown.length > 0) {
-        hud.showAction('新的花朵绽放了！', 'flower', '#ff6b9d');
+        hud.showAction('A new flower has bloomed!', 'flower', '#ff6b9d');
       }
     }
   }
