@@ -14,6 +14,17 @@ const POND_COUNT = 4;
 /** Nothing may be placed closer than this to another prop's centre. */
 const MIN_GAP = 10;
 
+/** Seconds before a fruit tree can be struck again. */
+export const FRUIT_COOLDOWN = 20;
+/** Seconds a dropped fruit stays on the ground before rotting away. */
+export const FRUIT_LIFETIME = 15;
+/** How close the hero must hop to grab a fruit. */
+export const FRUIT_PICKUP_RADIUS = 55;
+/** Height a fruit floats at, in world units. */
+const FRUIT_FLOAT = 40;
+/** Seconds before an exposed bush can hide the hero again. */
+export const BUSH_COOLDOWN = 8;
+
 // ---------------------------------------------------------------------------
 // Shared materials
 // ---------------------------------------------------------------------------
@@ -146,6 +157,8 @@ function buildBroadleafTree(rand) {
   }
 
   group.scale.setScalar(scale);
+  // Broadleaf trees are the fruit-bearing kind.
+  group.userData.treeKind = 'fruit';
   return group;
 }
 
@@ -192,6 +205,8 @@ function buildConiferTree(rand) {
   group.add(tip);
 
   group.scale.setScalar(scale);
+  // Conifers are decoration only — no fruit, no interaction.
+  group.userData.treeKind = 'pine';
   return group;
 }
 
@@ -387,6 +402,44 @@ function buildPond(rand) {
   return group;
 }
 
+/**
+ * Builds a dropped fruit: a red apple-like sphere with a stalk and a leaf,
+ * glowing slightly so it stays findable among the grass.
+ *
+ * @returns {THREE.Group}
+ */
+function buildFruitMesh() {
+  const group = new THREE.Group();
+
+  const body = new THREE.Mesh(
+    new THREE.SphereGeometry(10, 14, 12),
+    new THREE.MeshStandardMaterial({
+      color: 0xe5484d,
+      emissive: 0x8c1c1f,
+      emissiveIntensity: 0.45,
+      roughness: 0.35,
+      metalness: 0.1,
+    })
+  );
+  body.scale.set(1, 1, 0.92);
+  group.add(body);
+
+  const stalk = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.2, 1.2, 7, 5),
+    TRUNK_MATERIALS[2]
+  );
+  standUp(stalk);
+  stalk.position.z = 11;
+  group.add(stalk);
+
+  const leaf = new THREE.Mesh(new THREE.ConeGeometry(4, 9, 5), LEAF_MATERIALS[3]);
+  standUp(leaf, 0.5, 0.2);
+  leaf.position.set(4, 0, 12);
+  group.add(leaf);
+
+  return group;
+}
+
 // ---------------------------------------------------------------------------
 // Scenery
 // ---------------------------------------------------------------------------
@@ -437,12 +490,22 @@ export class Scenery {
     this.ponds = [];
 
     /**
-     * Trees specifically (the obstacles that block line of sight). Kept
-     * separate from `obstacles` so the LOS code in main.js does not have
-     * to guess which ones are tall.
-     * @type {Array<{position: THREE.Vector2, radius: number, height: number}>}
+     * Every tree. `isFruit` separates the broadleaf (fruit-bearing) kind from
+     * the conifers, which are decoration only.
+     * @type {Array<{position: THREE.Vector2, radius: number, height: number,
+     *   isFruit: boolean, cooldown: number, group: THREE.Group}>}
      */
     this.trees = [];
+
+    /** Just the fruit-bearing trees, so the strike test stays cheap. */
+    this.fruitTrees = [];
+
+    /**
+     * Fruits lying on the ground waiting to be eaten.
+     * @type {Array<{position: THREE.Vector2, mesh: THREE.Group, life: number,
+     *   phase: number, collected: boolean}>}
+     */
+    this.fruits = [];
 
     /**
      * All other props (trees etc.) that just need to fade when they block
@@ -514,9 +577,10 @@ export class Scenery {
       const record = { position, radius: obstacleRadius };
       this.taken.push(record);
 
-      // Trees and bushes are real cover; flowers and ponds are interaction
-      // points but don't block movement.
-      if ((kind === 'tree' || kind === 'bush') && obstacleRadius > 0) {
+      // Only trees block movement now. Houses and bushes are meant to be
+      // walked into — their effects trigger by standing inside them, and a
+      // collision circle made that geometrically impossible.
+      if (kind === 'tree' && obstacleRadius > 0) {
         this.obstacles.push(record);
       }
 
@@ -560,17 +624,24 @@ export class Scenery {
       this.props.push(fadeTarget);
 
       if (kind === 'tree') {
-        this.trees.push({
+        const isFruit = prop.userData.treeKind === 'fruit';
+        const tree = {
           position: position.clone(),
           radius: obstacleRadius,
           height: bounds.max.z,
-        });
+          isFruit,
+          cooldown: 0,
+          group: prop,
+        };
+        this.trees.push(tree);
+        if (isFruit) this.fruitTrees.push(tree);
       } else if (kind === 'bush') {
         this.bushes.push({
           ...fadeTarget,
           group: prop,
           alive: true,
           hiddenTimer: 0,
+          cooldown: 0,
         });
       } else if (kind === 'flower') {
         this.flowers.push({
@@ -640,6 +711,92 @@ export class Scenery {
       newFlowers.push({ position, group: prop });
     }
     return newFlowers;
+  }
+
+  /**
+   * Knocks a fruit off a tree, if that tree is a fruit tree and is not on
+   * cooldown. The fruit lands a short distance away so the hero has to hop
+   * over to it — dropping it at the trunk would let it be collected from
+   * where he already stands.
+   *
+   * @param {object} tree A record from `fruitTrees`.
+   * @returns {'ok' | 'not-fruit' | 'cooldown'} What happened.
+   */
+  dropFruit(tree) {
+    if (!tree.isFruit) return 'not-fruit';
+    if (tree.cooldown > 0) return 'cooldown';
+
+    tree.cooldown = FRUIT_COOLDOWN;
+
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 55 + Math.random() * 45;
+    const position = new THREE.Vector2(
+      tree.position.x + Math.cos(angle) * distance,
+      tree.position.y + Math.sin(angle) * distance
+    );
+
+    const mesh = buildFruitMesh();
+    mesh.position.set(position.x, position.y, FRUIT_FLOAT);
+    this.group.add(mesh);
+
+    this.fruits.push({
+      position,
+      mesh,
+      life: FRUIT_LIFETIME,
+      phase: Math.random() * Math.PI * 2,
+      collected: false,
+    });
+
+    return 'ok';
+  }
+
+  /**
+   * Animates dropped fruits, collects the ones the hero reaches, and counts
+   * the fruit-tree cooldowns down.
+   *
+   * @param {number} delta Seconds since the previous frame.
+   * @param {THREE.Vector3} playerPosition The hero's world position.
+   * @returns {number} How many fruits were eaten this frame.
+   */
+  updateFruits(delta, playerPosition) {
+    let eaten = 0;
+
+    for (const fruit of this.fruits) {
+      fruit.life -= delta;
+      fruit.phase += delta * 3;
+
+      fruit.mesh.position.z = FRUIT_FLOAT + Math.sin(fruit.phase) * 4;
+      fruit.mesh.rotation.z += delta * 1.6;
+
+      const distance = Math.hypot(
+        fruit.position.x - playerPosition.x,
+        fruit.position.y - playerPosition.y
+      );
+      if (distance < FRUIT_PICKUP_RADIUS) {
+        fruit.collected = true;
+        eaten++;
+      }
+    }
+
+    this.fruits = this.fruits.filter((fruit) => {
+      if (fruit.collected || fruit.life <= 0) {
+        this.group.remove(fruit.mesh);
+        return false;
+      }
+      return true;
+    });
+
+    for (const tree of this.fruitTrees) {
+      if (tree.cooldown > 0) tree.cooldown = Math.max(0, tree.cooldown - delta);
+    }
+
+    // Bushes that were discovered stay "burned" for a while so the hero
+    // cannot hop in and out of cover forever.
+    for (const bush of this.bushes) {
+      if (bush.cooldown > 0) bush.cooldown = Math.max(0, bush.cooldown - delta);
+    }
+
+    return eaten;
   }
 
   /**

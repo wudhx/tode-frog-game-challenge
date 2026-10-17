@@ -81,6 +81,9 @@ export class Player {
     // it loads, so collision uses his real size rather than a guess.
     this.radius = 22;
 
+    /** Timestamp of the last "blocked" thud, so it cannot machine-gun. */
+    this.lastBumpAt = 0;
+
     this.bindInput();
     this.load();
   }
@@ -167,6 +170,7 @@ export class Player {
     const resolved = this.resolveTarget(this.group.position, target);
     if (!resolved) {
       state.active = false;
+      this.reportBlocked();
       return;
     }
 
@@ -174,14 +178,14 @@ export class Player {
     // reject, so hopping straight into the edge simply stops at the edge.
     this.confine(resolved);
 
-    const distance = Math.hypot(
-      resolved.x - this.group.position.x,
-      resolved.y - this.group.position.y
-    );
+    const deltaX = resolved.x - this.group.position.x;
+    const deltaY = resolved.y - this.group.position.y;
+    const distance = Math.hypot(deltaX, deltaY);
 
     // Nowhere to go — don't start a zero-length hop.
     if (distance < 1e-3) {
       state.active = false;
+      this.reportBlocked();
       return;
     }
 
@@ -190,8 +194,21 @@ export class Player {
     // the timing, so a trimmed hop looks like a small hop, not a slow one.
     state.fraction = Math.min(1, distance / JUMP_DISTANCE);
 
-    // Face the direction of travel. atan2 gives 0 for +X and grows CCW.
-    state.rotation = Math.atan2(direction.y, direction.x);
+    // Face the direction actually travelled. When the world trimmed or slid
+    // the hop, that is not the same as the key that was pressed — facing the
+    // key instead would make a slide look like the frog is moonwalking.
+    state.rotation = Math.atan2(deltaY, deltaX);
+  }
+
+  /**
+   * Fires a dull thud when a hop is refused, so "a wall stopped me" is
+   * distinguishable from "the controls stopped working".
+   */
+  reportBlocked() {
+    const now = performance.now();
+    if (now - this.lastBumpAt < 250) return;
+    this.lastBumpAt = now;
+    sound.bump();
   }
 
   /**

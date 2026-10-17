@@ -39,38 +39,104 @@ canvas.game {
   vertical-align: middle;
 }
 
-/* --- Health hearts ------------------------------------------------------- */
+/* --- Health bar ---------------------------------------------------------- */
 .health {
   position: fixed;
   top: 20px;
   left: 20px;
   z-index: 10;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-  max-width: 190px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.85);
+  width: 212px;
+  padding: 10px 14px 11px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
   user-select: none;
   pointer-events: none;
-  transition: transform 0.12s ease-out;
+  transition: transform 0.1s ease-out, background-color 0.12s ease-out;
 }
 
-.heart {
+.hp-head {
   display: flex;
-  line-height: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
 }
 
-/* A quick jolt while the hero is in their mercy window. */
+.hp-name {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: #1b4332;
+  opacity: 0.5;
+}
+
+.hp-value {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #1b4332;
+}
+
+.hp-track {
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(27, 67, 50, 0.14);
+  overflow: hidden;
+}
+
+.hp-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 999px;
+  background: #43b96b;
+  transition: width 0.18s linear, background-color 0.25s ease-out;
+}
+
+/* Three-band colour so "how bad is it" reads at a glance. */
+.health[data-level='warn'] .hp-fill {
+  background: #e8a33d;
+}
+
+.health[data-level='danger'] .hp-fill {
+  background: #e5484d;
+  animation: hp-pulse 0.75s ease-in-out infinite alternate;
+}
+
+@keyframes hp-pulse {
+  from { opacity: 0.6; }
+  to   { opacity: 1; }
+}
+
+/* Brief flashes so a hit or a heal is impossible to miss. */
 .health.is-hurt {
-  animation: heart-jolt 0.28s ease-out infinite alternate;
+  transform: translateX(3px);
+  background: rgba(255, 233, 233, 0.95);
 }
 
-@keyframes heart-jolt {
-  from { transform: translateX(0); }
-  to   { transform: translateX(3px); }
+.health.is-hurt .hp-fill {
+  background: #ff7a7a;
+}
+
+.health.is-heal .hp-fill {
+  background: #7ee2a8;
+}
+
+.hp-buffs {
+  display: none;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.hp-buff {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(67, 185, 107, 0.16);
+  color: #1b6b3a;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
 }
 
 /* --- Game over overlay --------------------------------------------------- */

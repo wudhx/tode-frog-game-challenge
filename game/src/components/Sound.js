@@ -160,6 +160,11 @@ class Sound {
     this.tone({ freq: 90, endFreq: 30, duration: 0.16, type: 'sawtooth', gain: 0.25, delay: 0.04 });
   }
 
+  /** A dull thud when a hop is refused by a wall. */
+  bump() {
+    this.tone({ freq: 110, endFreq: 68, duration: 0.09, type: 'sine', gain: 0.22 });
+  }
+
   /**
    * A celebratory fanfare for beating the previous best score.
    *

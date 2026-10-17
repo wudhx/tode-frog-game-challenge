@@ -92,13 +92,45 @@ class House {
     this.pivot.position.set(position.x, position.y, 0);
     this.pivot.updateMatrixWorld(true);
     const placed = new THREE.Box3().setFromObject(this.pivot);
-    this.radius = Math.max(
-      Math.abs(placed.max.x - position.x),
-      Math.abs(position.x - placed.min.x),
-      Math.abs(placed.max.y - position.y),
-      Math.abs(position.y - placed.min.y)
-    );
     this.height = placed.max.z;
+
+    // --- Collision radius: ground footprint, not the roof overhang. ------
+    // Measuring the whole bounding box gave a circle much wider than the
+    // walls (the roof juts out well past them), so the hero came to rest a
+    // visible distance short of the house and the "inside" test — which uses
+    // a fraction of this radius — could never be satisfied. Only vertices
+    // below the roof line count towards the footprint.
+    const roofLine = placed.min.z + (placed.max.z - placed.min.z) * 0.42;
+    const vertex = new THREE.Vector3();
+    let footprintRadius = 0;
+    this.pivot.traverse((node) => {
+      if (!node.isMesh || !node.geometry?.attributes?.position) return;
+      const pos = node.geometry.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        vertex.fromBufferAttribute(pos, i).applyMatrix4(node.matrixWorld);
+        if (vertex.z > roofLine) continue;
+        const d = Math.hypot(vertex.x - position.x, vertex.y - position.y);
+        if (d > footprintRadius) footprintRadius = d;
+      }
+    });
+    this.radius = footprintRadius > 1
+      ? footprintRadius
+      : Math.max(
+          Math.abs(placed.max.x - position.x),
+          Math.abs(position.x - placed.min.x),
+          Math.abs(placed.max.y - position.y),
+          Math.abs(position.y - placed.min.y)
+        );
+
+    // --- Own material instances, so fading one house fades only that one.
+    this.materials = [];
+    this.pivot.traverse((node) => {
+      if (!node.isMesh || !node.material) return;
+      node.material = node.material.clone();
+      node.material.transparent = true;
+      this.materials.push(node.material);
+    });
+    this.opacity = 1;
 
     // --- Health bar above the roof. -------------------------------------
     this.healthBar = new THREE.Sprite(
@@ -112,6 +144,26 @@ class House {
     this.healthBar.position.set(0, 0, this.height + 10);
     this.healthBar.renderOrder = 100;
     this.pivot.add(this.healthBar);
+  }
+
+  /**
+   * Fades the house so the hero is visible while standing inside it.
+   *
+   * @param {number} target 0 = invisible, 1 = solid.
+   * @param {number} delta Seconds since the previous frame.
+   */
+  fadeTo(target, delta) {
+    const step = delta * 4;
+    if (Math.abs(this.opacity - target) < 0.01) {
+      this.opacity = target;
+    } else {
+      this.opacity += Math.sign(target - this.opacity) * step;
+      this.opacity = THREE.MathUtils.clamp(this.opacity, target, 1);
+    }
+    for (const material of this.materials) {
+      material.opacity = this.opacity;
+      material.depthWrite = this.opacity > 0.95;
+    }
   }
 
   /**
@@ -158,20 +210,25 @@ class House {
     }
   }
 
-  /** Drops the house into a grey, tilted ruin. */
+  /**
+   * Removes the house from the board entirely.
+   *
+   * It used to turn into a grey, tilted ruin that stayed where it was, which
+   * read as "the house is broken but still blocking me" — and left a phantom
+   * obstacle behind. Now it is simply gone, and the caller drops it from the
+   * collision list so the gap is genuinely open.
+   */
   collapse() {
     this.fallen = true;
     this.pivot.remove(this.healthBar);
-    this.pivot.traverse((node) => {
-      if (!node.isMesh || !node.material) return;
-      node.material = node.material.clone();
-      node.material.color.multiplyScalar(0.45);
-      node.material.roughness = Math.min(1, (node.material.roughness ?? 0.5) + 0.3);
-      node.material.metalness = 0;
-    });
-    // Tilt the ruin slightly so the player can tell at a glance.
-    this.pivot.rotation.x = (Math.random() - 0.5) * 0.2;
-    this.pivot.rotation.y = (Math.random() - 0.5) * 0.2;
+    if (this.healthBar.material.map) this.healthBar.material.map.dispose();
+    this.healthBar.material.dispose();
+
+    if (this.pivot.parent) this.pivot.parent.remove(this.pivot);
+
+    // Only the per-house material clones are ours to free; geometry is
+    // shared with the loaded template.
+    for (const material of this.materials) material.dispose();
   }
 }
 
