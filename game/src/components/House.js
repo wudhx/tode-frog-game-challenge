@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { BOARD_HALF, TILE_SIZE } from './Map.js';
 
 /** Uniform scale applied to the house model. */
-export const HOUSE_SCALE = 65;
+export const HOUSE_SCALE = 97.5;
 
 /** How many houses are scattered across the board. */
 export const HOUSE_COUNT = 4;
@@ -22,7 +22,7 @@ export const HOUSE_HIT_INTERVAL = 1.0;
 const SAFE_MARGIN = TILE_SIZE * 2;
 const PLAYER_KEEPOUT = TILE_SIZE * 3;
 /** Minimum gap between two houses. */
-const HOUSE_SPACING = TILE_SIZE * 5;
+const HOUSE_SPACING = TILE_SIZE * 7.5;
 
 /**
  * Paints a horizontal health bar texture for a house. Five red cells on a dark

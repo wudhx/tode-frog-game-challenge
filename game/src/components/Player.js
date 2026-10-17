@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { sound } from './Sound.js';
 
 // ---------------------------------------------------------------------------
@@ -158,20 +159,54 @@ export class Player {
   /**
    * Builds the hero model.
    *
-   * Kept synchronous and dependency-free: the frog is made of primitives, so he
-   * always appears even where a large GLB would fail to download.
+   * Starts with a procedural frog so the hero is visible immediately and can
+   * never be invisible, then swaps in the detailed GLB model once it arrives.
+   * If the GLB fails to download (it is a large file, and the request is
+   * sometimes dropped), the procedural frog simply stays.
    */
   load() {
-    const model = buildFrog();
+    // Placeholder frog, visible from the first frame.
+    const placeholder = buildFrog();
+    this.model = placeholder;
+    this.yaw.add(placeholder);
+    this.loaded = true;
 
-    // Fixed footprint radius — the frog is a known size, so collision uses his
-    // real extent directly instead of guessing from a loaded mesh.
-    const box = new THREE.Box3().setFromObject(model);
+    const box = new THREE.Box3().setFromObject(placeholder);
     this.radius = Math.max(box.max.x - box.min.x, box.max.y - box.min.y) / 2;
 
-    this.model = model;
-    this.yaw.add(model);
-    this.loaded = true;
+    // Upgrade to the detailed model when it loads.
+    const loader = new GLTFLoader();
+    loader.load(
+      `${import.meta.env.BASE_URL}models/tode.glb`,
+      (gltf) => {
+        const model = gltf.scene;
+
+        // The asset is authored "lying down" for a Y-up world; rotate it into
+        // our Z-up coordinate system so the frog stands upright.
+        model.rotation.x = Math.PI / 2;
+
+        // Scale the frog to a sensible size for the map.
+        model.scale.setScalar(20);
+
+        // Sit the model exactly on the ground plane (Z = 0) by measuring how
+        // far the geometry extends below its own origin after rotation.
+        model.updateMatrixWorld(true);
+        const glbBox = new THREE.Box3().setFromObject(model);
+        model.position.z -= glbBox.min.z;
+
+        // Half of the widest horizontal extent is the frog's footprint radius.
+        this.radius = Math.max(glbBox.max.x - glbBox.min.x, glbBox.max.y - glbBox.min.y) / 2;
+
+        // Swap out the placeholder.
+        this.yaw.remove(placeholder);
+        this.model = model;
+        this.yaw.add(model);
+      },
+      undefined,
+      () => {
+        // Download failed — keep the procedural frog. Better than no hero.
+      }
+    );
   }
 
   /**

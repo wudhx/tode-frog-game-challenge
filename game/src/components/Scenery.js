@@ -260,6 +260,10 @@ function buildBush(rand) {
     group.add(accent);
   }
 
+  // A little larger than the raw cluster so the bush reads as real cover
+  // rather than a tuft of grass the hero dwarfs.
+  group.scale.setScalar(1.35);
+
   return group;
 }
 
@@ -598,6 +602,9 @@ export class Scenery {
           water: prop.userData.water,
           bonusClaimed: false,
           bonusType: null,
+          // Each pond cools down independently, so draining one does not lock
+          // the others.
+          cooldown: 0,
         });
         placed++;
         continue;

@@ -49,7 +49,7 @@ const HOUSE_INTERIOR_OPACITY = 0.3;
 /** How long the hide lasts before the hero is spotted. */
 const BUSH_HIDE_DURATION = 4;
 /** How close the hero must be to count as "in" a bush. */
-const BUSH_INTERIOR_DISTANCE = 55;
+const BUSH_INTERIOR_DISTANCE = 70;
 /** How close an insect must be to whack a bush apart. */
 const BUSH_ATTACK_RANGE = 90;
 
@@ -188,7 +188,6 @@ const pondState = {
   inWater: false,
   pond: null,
   timer: 0,
-  cooldown: 0,
   /** HP already restored during this soak, so the per-soak cap can be enforced. */
   healAccum: 0,
   /** Whether this soak has already rolled its random bonus. */
@@ -308,9 +307,9 @@ function resetGame() {
   pondState.inWater = false;
   pondState.pond = null;
   pondState.timer = 0;
-  pondState.cooldown = 0;
   pondState.healAccum = 0;
   pondState.bonusFired = false;
+  if (scenery) for (const pond of scenery.ponds) pond.cooldown = 0;
   lastFlowerMilestone = 0;
   damagedBushes.clear();
 
@@ -761,7 +760,7 @@ renderer.setAnimationLoop(() => {
   }
 
   if (inWater) {
-    if (pondState.cooldown <= 0) {
+    if ((inWater.cooldown || 0) <= 0) {
       if (!pondState.inWater) {
         // Start a fresh soak.
         pondState.inWater = true;
@@ -797,25 +796,31 @@ renderer.setAnimationLoop(() => {
       // End the soak on the cap or on the hard time limit.
       const capped = pondState.healAccum >= cap - 0.01;
       if (capped || pondState.timer >= POND_SOAK_DURATION) {
+        const finished = pondState.pond;
         pondState.inWater = false;
         pondState.pond = null;
         pondState.timer = 0;
         pondState.healAccum = 0;
-        pondState.cooldown = POND_COOLDOWN;
+        // Only THIS pond goes on cooldown; the others stay available.
+        if (finished) finished.cooldown = POND_COOLDOWN;
       }
     }
   } else if (pondState.inWater) {
-    // Left the water mid-soak — burn the cooldown so dipping in and out
-    // cannot be used to farm heals.
+    // Left the water mid-soak — burn that pond's cooldown so dipping in and
+    // out cannot be used to farm heals.
+    const abandoned = pondState.pond;
     pondState.inWater = false;
     pondState.pond = null;
     pondState.timer = 0;
     pondState.healAccum = 0;
-    pondState.cooldown = POND_COOLDOWN;
+    if (abandoned) abandoned.cooldown = POND_COOLDOWN;
   }
 
-  if (pondState.cooldown > 0) {
-    pondState.cooldown = Math.max(0, pondState.cooldown - delta);
+  // Each pond's cooldown ticks down independently.
+  if (scenery) {
+    for (const pond of scenery.ponds) {
+      if (pond.cooldown > 0) pond.cooldown = Math.max(0, pond.cooldown - delta);
+    }
   }
 
   // --- Pond-driven slow effect -------------------------------------------
@@ -861,11 +866,12 @@ renderer.setAnimationLoop(() => {
   }
 
   if (!hintState && inWater) {
-    hintState = pondState.cooldown > 0
+    const pondCd = inWater.cooldown || 0;
+    hintState = pondCd > 0
       ? {
           key: 'pond',
           tone: 'cooldown',
-          text: `This pond is cooling down · ${Math.ceil(pondState.cooldown)}s`,
+          text: `This pond is cooling down · ${Math.ceil(pondCd)}s`,
         }
       : {
           key: 'pond',
@@ -875,11 +881,12 @@ renderer.setAnimationLoop(() => {
   }
 
   if (!hintState && nearPond) {
-    hintState = pondState.cooldown > 0
+    const pondCd = nearPond.cooldown || 0;
+    hintState = pondCd > 0
       ? {
           key: 'pond',
           tone: 'cooldown',
-          text: `This pond is cooling down · ${Math.ceil(pondState.cooldown)}s`,
+          text: `This pond is cooling down · ${Math.ceil(pondCd)}s`,
         }
       : {
           key: 'pond',
