@@ -35,6 +35,18 @@ const ENEMY_HIT_DISTANCE = 45;
 const KILL_MAX_HP_GAIN = 3;
 
 /**
+ * Level-based damage reduction is capped at 15%. Level alone must never make
+ * the hero tanky enough that stacking genes/talents could approach immunity.
+ */
+const LEVEL_DAMAGE_REDUCTION_MAX = 0.15;
+/**
+ * Hard ceiling on combined damage reduction from EVERY source (level, mole
+ * gene, Iron Wall talent, awakening…). Without this, additive stacking could
+ * reach 100% and the frog would be invincible.
+ */
+const MAX_TOTAL_DAMAGE_REDUCTION = 0.8;
+
+/**
  * The hero's derived combat stats.
  *
  * Phase 1 wires the damage pipeline (attack power, damage reduction, shield).
@@ -625,10 +637,15 @@ renderer.setAnimationLoop(() => {
 
   // --- Level-driven bonuses ------------------------------------------------
   // 100 HP = level 1, +100 per level, capped at 15. Each level adds attack,
-  // damage reduction and a little move speed.
+  // damage reduction and a little move speed. Level reduction is capped at
+  // 15% so it cannot combine with genes/talents into near-immunity.
   const level = health.level;
+  const levelReduction = Math.min(
+    LEVEL_DAMAGE_REDUCTION_MAX,
+    (level - 1) * (LEVEL_DAMAGE_REDUCTION_MAX / 14)
+  );
   playerStats.attackPower = 1 + (level - 1) * 0.05;
-  playerStats.damageReduction = (level - 1) * 0.02;
+  playerStats.damageReduction = Math.min(MAX_TOTAL_DAMAGE_REDUCTION, levelReduction);
   const levelSpeed = 1 - (level - 1) * 0.01;
 
   player.setMoveDuration(params.playerMoveDuration * boosts.hopDuration * levelSpeed);
@@ -1225,8 +1242,9 @@ renderer.setAnimationLoop(() => {
     // The pond soaks a fifth of the damage while the hero is standing in it.
     if (inWater) damage *= 1 - POND_DAMAGE_SOAK;
 
-    // Level, genes and talents can reduce incoming damage.
-    damage *= 1 - playerStats.damageReduction;
+    // Level, genes and talents can reduce incoming damage, but never past
+    // the global ceiling — 100% would make the frog invincible.
+    damage *= 1 - Math.min(MAX_TOTAL_DAMAGE_REDUCTION, playerStats.damageReduction);
 
     // A shield absorbs damage before HP is touched.
     if (playerStats.shield > 0) {
