@@ -59,6 +59,10 @@ export class Attack {
     // even while arrow keys are pressed.
     this.spaceHeld = false;
 
+    // Set by every successful shot and consumed by the main loop, so a hit is
+    // never lost when one visual ring overlaps the next.
+    this.pendingHit = false;
+
     this.bindInput();
   }
 
@@ -98,6 +102,23 @@ export class Attack {
 
     sound.attack();
 
+    this.pendingHit = true;
+
+    return true;
+  }
+
+  /**
+   * Returns true exactly once per fired attack, then clears the flag.
+   *
+   * The main loop uses this instead of watching the visual ring, so a shot can
+   * never be swallowed by an overlapping ring (which happened when the attack
+   * cooldown was shorter than the ring's lifetime).
+   *
+   * @returns {boolean}
+   */
+  consumeHit() {
+    if (!this.pendingHit) return false;
+    this.pendingHit = false;
     return true;
   }
 
@@ -157,6 +178,7 @@ export class Attack {
   reset() {
     this.cooldown = 0;
     this.visualTimer = 0;
+    this.pendingHit = false;
     this.ring.visible = false;
   }
 }

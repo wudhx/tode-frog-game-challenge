@@ -376,6 +376,98 @@ canvas.game {
   font-weight: 800;
 }
 
+/* --- Pause menu ---------------------------------------------------------- */
+.pause-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 20, 12, 0.62);
+  font-family: inherit;
+}
+
+.pause-box {
+  width: 420px;
+  max-width: 90vw;
+  padding: 24px 28px;
+  border-radius: 20px;
+  background: #ffffff;
+  color: #1b4332;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+}
+
+.pause-title {
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.pause-sub {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-top: 2px;
+}
+
+.pause-section {
+  margin-top: 18px;
+}
+
+.pause-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #2f6b2a;
+}
+
+.pause-genes {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pause-gene {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pause-gene.empty {
+  opacity: 0.4;
+}
+
+.pause-stats {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.pause-controls {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.6;
+  opacity: 0.7;
+}
+
+.pause-resume {
+  width: 100%;
+  margin-top: 20px;
+  padding: 11px 0;
+  border: none;
+  border-radius: 10px;
+  background: #43b96b;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  font-family: inherit;
+}
+
 /* --- Game over overlay --------------------------------------------------- */
 .game-over {
   position: fixed;

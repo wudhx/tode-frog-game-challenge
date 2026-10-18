@@ -330,16 +330,106 @@ function resolveGene(take) {
   renderGeneBar();
 }
 
-// Keyboard shortcuts for the gene card: F takes, G skips.
+// Keyboard shortcuts for the gene card: F takes, G (or Esc) skips.
 window.addEventListener('keydown', (event) => {
   if (geneCard.style.display === 'none') return;
   if (event.code === 'KeyF' || event.code === 'Enter') {
     event.preventDefault();
     resolveGene(true);
-  } else if (event.code === 'KeyG') {
+  } else if (event.code === 'KeyG' || event.code === 'Escape') {
     event.preventDefault();
     resolveGene(false);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Pause menu
+// ---------------------------------------------------------------------------
+let pauseMenuOpen = false;
+
+const pauseMenu = document.createElement('div');
+pauseMenu.className = 'pause-overlay';
+pauseMenu.style.display = 'none';
+document.body.appendChild(pauseMenu);
+
+/** Fills the pause overlay with the current build and controls. */
+function renderPauseMenu() {
+  const geneRows = genes.slots.map((slot) => {
+    if (!slot) return '<div class="pause-gene empty">Empty slot</div>';
+    const cfg = GENE_TYPES[slot.key];
+    const color = `#${TIER_COLORS[slot.tier].toString(16).padStart(6, '0')}`;
+    return (
+      '<div class="pause-gene">' +
+      `<span class="gene-dot" style="background:${color}"></span>` +
+      `${cfg.label} · ${TIER_LABELS[slot.tier]} · x${formatStacks(slot.stacks)}` +
+      '</div>'
+    );
+  });
+
+  const stats = [
+    `Level ${health.level}`,
+    `HP ${Math.ceil(health.hp)} / ${health.maxHp}`,
+    `ATK ${playerStats.attackPower.toFixed(2)}`,
+    `DEF ${(playerStats.damageReduction * 100).toFixed(1)}%`,
+    `Lifesteal ${(playerStats.lifesteal * 100).toFixed(1)}%`,
+  ].join(' · ');
+
+  pauseMenu.innerHTML = [
+    '<div class="pause-box">',
+    '  <div class="pause-title">Paused</div>',
+    '  <div class="pause-sub">Press P or Esc to resume</div>',
+    '  <div class="pause-section">',
+    '    <div class="pause-label">Genes</div>',
+    `    <div class="pause-genes">${geneRows.join('')}</div>`,
+    '  </div>',
+    '  <div class="pause-section">',
+    '    <div class="pause-label">Stats</div>',
+    `    <div class="pause-stats">${stats}</div>`,
+    '  </div>',
+    '  <div class="pause-section">',
+    '    <div class="pause-label">Controls</div>',
+    '    <div class="pause-controls">',
+    '      Arrow keys — hop · Space — tongue blast (hold to keep firing)<br>',
+    '      F — take gene · G / Esc — skip gene · C — character panel · P / Esc — pause',
+    '    </div>',
+    '  </div>',
+    '  <button class="pause-resume">Resume</button>',
+    '</div>',
+  ].join('');
+
+  pauseMenu.querySelector('.pause-resume').onclick = () => closePauseMenu();
+}
+
+/** Freezes the world and shows the pause overlay. */
+function openPauseMenu() {
+  if (gameState !== 'playing') return;
+  pauseMenuOpen = true;
+  paused = true;
+  attack.enabled = false;
+  player.stop();
+  renderPauseMenu();
+  pauseMenu.style.display = 'flex';
+}
+
+/** Unfreezes the world and hides the pause overlay. */
+function closePauseMenu() {
+  pauseMenuOpen = false;
+  paused = false;
+  attack.enabled = true;
+  player.stop();
+  clock.getDelta();
+  pauseMenu.style.display = 'none';
+}
+
+// P / Esc toggles the pause menu. Ignored while the gene card or game-over
+// overlay is up, so those keep their own keys.
+window.addEventListener('keydown', (event) => {
+  if (event.code !== 'KeyP' && event.code !== 'Escape') return;
+  if (gameState !== 'playing') return;
+  if (geneCard.style.display !== 'none') return;
+  event.preventDefault();
+  if (pauseMenuOpen) closePauseMenu();
+  else openPauseMenu();
 });
 
 // ---------------------------------------------------------------------------
@@ -766,7 +856,6 @@ window.addEventListener('resize', () => {
 // Animation loop
 // ---------------------------------------------------------------------------
 const clock = new THREE.Clock();
-let attackWasActive = false;
 
 // Scratch vector reused across frames.
 const _dir = new THREE.Vector2();
@@ -1195,9 +1284,10 @@ renderer.setAnimationLoop(() => {
   // 4. ATTACK LIFECYCLE
   // =======================================================================
   attack.update(delta);
-  const attackActive = attack.visualTimer > 0;
 
-  if (attackActive && !attackWasActive) {
+  // Every successful fire queues exactly one hit. Watching the visual ring
+  // instead used to swallow shots when the cooldown was shorter than the ring.
+  if (attack.consumeHit()) {
     const hit = attack.enemiesInRange(enemies);
     if (hit.length > 0) {
       const destroyed = hit.filter((enemy) => {
@@ -1261,7 +1351,6 @@ renderer.setAnimationLoop(() => {
       }
     }
   }
-  attackWasActive = attackActive;
 
   // =======================================================================
   // 5. FRUITS
