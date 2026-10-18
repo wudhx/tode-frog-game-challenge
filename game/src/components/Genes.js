@@ -95,6 +95,55 @@ export const GENE_TYPES = {
 export const GENE_PICKUP_RADIUS = 48;
 /** Consecutive kills without a drop before one is forced. */
 export const GENE_PITY = 10;
+/** Shown on every gene card so stacking is never a mystery. */
+export const STACK_RULE =
+  '3 same-quality pickups upgrade the quality. Upgrading converts existing stacks by the per-stack ratio.';
+
+/**
+ * Formats the per-stack gain for the pickup card.
+ *
+ * @param {object} cfg A GENE_TYPES entry.
+ * @param {'common'|'rare'|'legendary'} tier
+ * @returns {string}
+ */
+function formatPerLayer(cfg, tier) {
+  const per = cfg.perLayer[tier];
+  switch (cfg.stat) {
+    case 'attackCooldown':
+      return `-${(per * 100).toFixed(1)}% attack cooldown per stack`;
+    case 'lifesteal':
+      return `+${(per * 100).toFixed(1)}% lifesteal per stack`;
+    case 'damageReduction':
+      return `-${(per * 100).toFixed(1)}% damage taken per stack`;
+    case 'attackRange':
+      return `+${per} attack range per stack`;
+    case 'maxHp':
+      return `+${per} max HP per stack`;
+    case 'attackPower':
+      return `+${per} attack power per stack`;
+    default:
+      return `+${per} per stack`;
+  }
+}
+
+/**
+ * Formats the ceiling (or cooldown floor) for the pickup card.
+ *
+ * @param {object} cfg A GENE_TYPES entry.
+ * @param {'common'|'rare'|'legendary'} tier
+ * @returns {string}
+ */
+function formatCap(cfg, tier) {
+  if (cfg.stat === 'attackCooldown') {
+    return `Min cooldown ${cfg.floor[tier]}s`;
+  }
+  if (!cfg.cap) return 'No cap';
+  const cap = cfg.cap[tier];
+  if (cfg.stat === 'lifesteal' || cfg.stat === 'damageReduction') {
+    return `Cap ${Math.round(cap * 100)}%`;
+  }
+  return `Cap ${cap}`;
+}
 
 /**
  * The gene system.
@@ -115,6 +164,8 @@ export class GeneSystem {
     this.pending = null;
     /** Kills since the last drop, for the pity timer. */
     this.killsSinceDrop = 0;
+    /** Kills since the last post-legendary stack gain. */
+    this.stackKills = 0;
     /** Set to true once every slot is a legendary gene. */
     this.finished = false;
   }
@@ -263,6 +314,34 @@ export class GeneSystem {
   }
 
   /**
+   * Once every slot is legendary, orbs stop dropping. Kills still feed the
+   * build: every 20 kills (or any elite kill) adds one stack to the locked
+   * gene with the fewest stacks, so the build keeps growing without popups.
+   *
+   * @param {boolean} [isElite]
+   * @returns {{key: string, stacks: number}|null} The gene that grew, or null.
+   */
+  grantStackOnKill(isElite = false) {
+    if (!this.allLegendary) return null;
+
+    const filled = this.slots.filter(Boolean);
+    if (filled.length === 0) return null;
+
+    this.stackKills += 1;
+    const threshold = isElite ? 1 : 20;
+    if (this.stackKills < threshold) return null;
+    this.stackKills = 0;
+
+    // Grow the least-developed gene so no single stat runs away.
+    let target = filled[0];
+    for (const slot of filled) {
+      if (slot.stacks < target.stacks) target = slot;
+    }
+    target.stacks += 1;
+    return { key: target.key, stacks: target.stacks };
+  }
+
+  /**
    * Resolves the pending orb.
    *
    * @param {boolean} take True to take it, false to skip.
@@ -287,35 +366,59 @@ export class GeneSystem {
    * @returns {boolean} True if it was applied.
    */
   apply(key, tier) {
+    const cfg = GENE_TYPES[key];
     const slot = this.slots.find((g) => g && g.key === key);
 
-    if (slot) {
-      slot.stacks += 1;
-
-      const dropIndex = GENE_TIERS.indexOf(tier);
-      const currentIndex = GENE_TIERS.indexOf(slot.tier);
-
-      if (dropIndex > currentIndex) {
-        // A better drop replaces the quality outright.
-        slot.tier = tier;
-        slot.merge = 0;
-      } else if (dropIndex === currentIndex) {
-        // Three same-quality pickups upgrade one tier.
-        slot.merge += 1;
-        if (slot.merge >= 3 && currentIndex < GENE_TIERS.length - 1) {
-          slot.tier = GENE_TIERS[currentIndex + 1];
-          slot.merge = 0;
-        }
-      }
+    if (!slot) {
+      const free = this.slots.indexOf(null);
+      if (free < 0) return false;
+      // The first pickup already counts towards the three-gene merge.
+      this.slots[free] = { key, tier, stacks: 1, merge: 1 };
       return true;
     }
 
-    const free = this.slots.indexOf(null);
-    if (free < 0) return false;
+    const dropIndex = GENE_TIERS.indexOf(tier);
+    const currentIndex = GENE_TIERS.indexOf(slot.tier);
 
-    // The first pickup already counts towards the three-gene merge.
-    this.slots[free] = { key, tier, stacks: 1, merge: 1 };
+    if (dropIndex > currentIndex) {
+      // Upgrade first (converting the old stacks), then add the new stack at
+      // the better tier's value.
+      this.upgradeSlot(slot, tier);
+      slot.stacks += 1;
+      return true;
+    }
+
+    if (dropIndex < currentIndex) {
+      // A weaker drop still contributes its own value, expressed in
+      // current-tier stacks, but does not advance the merge counter.
+      slot.stacks += cfg.perLayer[tier] / cfg.perLayer[slot.tier];
+      return true;
+    }
+
+    // Same tier: one full stack, and the merge counter advances.
+    slot.stacks += 1;
+    slot.merge += 1;
+    if (slot.merge >= 3 && currentIndex < GENE_TIERS.length - 1) {
+      this.upgradeSlot(slot, GENE_TIERS[currentIndex + 1]);
+    }
     return true;
+  }
+
+  /**
+   * Raises a slot's quality and converts its stacks proportionally, so the
+   * total stat value is preserved: ten common stacks become fewer rare stacks
+   * worth exactly the same amount. Low-quality stacks never carry over 1:1.
+   *
+   * @param {{key: string, tier: string, stacks: number, merge: number}} slot
+   * @param {'common'|'rare'|'legendary'} newTier
+   */
+  upgradeSlot(slot, newTier) {
+    const cfg = GENE_TYPES[slot.key];
+    const oldPer = cfg.perLayer[slot.tier];
+    const newPer = cfg.perLayer[newTier];
+    slot.stacks = slot.stacks * (oldPer / newPer);
+    slot.tier = newTier;
+    slot.merge = 0;
   }
 
   /**
@@ -331,38 +434,61 @@ export class GeneSystem {
     const slot = this.slots.find((g) => g && g.key === orb.key);
     const free = this.slots.indexOf(null);
 
+    const base = {
+      key: orb.key,
+      label: cfg.label,
+      tier: orb.tier,
+      description: cfg.description,
+      perLayerText: formatPerLayer(cfg, orb.tier),
+      capText: formatCap(cfg, orb.tier),
+      stackRule: STACK_RULE,
+    };
+
     if (!slot) {
       return {
+        ...base,
         kind: free >= 0 ? 'new' : 'full',
-        key: orb.key,
-        label: cfg.label,
-        tier: orb.tier,
-        description: cfg.description,
         slotIndex: free,
+        currentStacks: 0,
         stacks: 1,
+        merge: 1,
       };
     }
 
     const dropIndex = GENE_TIERS.indexOf(orb.tier);
     const currentIndex = GENE_TIERS.indexOf(slot.tier);
-    const upgrades = dropIndex > currentIndex;
-    const mergeStep = !upgrades && dropIndex === currentIndex ? slot.merge + 1 : slot.merge;
+
+    let kind = 'stack';
+    let nextTier = slot.tier;
+    let stacks = slot.stacks;
+    let merge = slot.merge;
+
+    if (dropIndex > currentIndex) {
+      kind = 'upgrade';
+      nextTier = orb.tier;
+      stacks = slot.stacks * (cfg.perLayer[slot.tier] / cfg.perLayer[orb.tier]) + 1;
+      merge = 0;
+    } else if (dropIndex < currentIndex) {
+      stacks = slot.stacks + cfg.perLayer[orb.tier] / cfg.perLayer[slot.tier];
+    } else {
+      stacks = slot.stacks + 1;
+      merge = slot.merge + 1;
+      if (merge >= 3 && currentIndex < GENE_TIERS.length - 1) {
+        kind = 'upgrade';
+        nextTier = GENE_TIERS[currentIndex + 1];
+        stacks = stacks * (cfg.perLayer[slot.tier] / cfg.perLayer[nextTier]);
+        merge = 0;
+      }
+    }
 
     return {
-      kind: upgrades ? 'upgrade' : 'stack',
-      key: orb.key,
-      label: cfg.label,
-      tier: orb.tier,
-      description: cfg.description,
-      stacks: slot.stacks + 1,
+      ...base,
+      kind,
+      currentStacks: slot.stacks,
+      stacks,
       currentTier: slot.tier,
-      nextTier:
-        upgrades
-          ? orb.tier
-          : mergeStep >= 3 && currentIndex < GENE_TIERS.length - 1
-            ? GENE_TIERS[currentIndex + 1]
-            : null,
-      merge: mergeStep,
+      nextTier,
+      merge,
     };
   }
 
@@ -421,6 +547,7 @@ export class GeneSystem {
     this.pending = null;
     this.slots = new Array(this.slotCount).fill(null);
     this.killsSinceDrop = 0;
+    this.stackKills = 0;
     this.finished = false;
   }
 }

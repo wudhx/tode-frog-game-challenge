@@ -303,6 +303,26 @@ canvas.game {
   opacity: 0.7;
 }
 
+.gene-card-per {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.gene-card-cap {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #a04040;
+}
+
+.gene-card-rule {
+  margin-top: 12px;
+  font-size: 10px;
+  line-height: 1.45;
+  opacity: 0.55;
+}
+
 .gene-card-action {
   margin: 14px 0 4px;
   font-size: 13px;
@@ -344,6 +364,16 @@ canvas.game {
 .gene-skip {
   background: #e9ecef;
   color: #1b4332;
+}
+
+.gene-card-buttons kbd {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.4);
+  font-size: 10px;
+  font-weight: 800;
 }
 
 /* --- Game over overlay --------------------------------------------------- */

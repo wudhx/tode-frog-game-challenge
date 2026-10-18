@@ -221,6 +221,11 @@ const geneBar = document.createElement('div');
 geneBar.className = 'gene-bar';
 document.body.appendChild(geneBar);
 
+/** One-decimal stack display, so converted (fractional) stacks stay readable. */
+function formatStacks(value) {
+  return String(Math.round(value * 10) / 10);
+}
+
 /** Rewrites the three (or more) locked-gene pips. */
 function renderGeneBar() {
   const cells = [];
@@ -241,7 +246,7 @@ function renderGeneBar() {
       `<div class="gene-slot" data-tier="${slot.tier}">` +
         `<span class="gene-dot" style="background:${color}"></span>` +
         `<span class="gene-name">${cfg.label}</span>` +
-        `<span class="gene-stacks">x${slot.stacks}</span>` +
+        `<span class="gene-stacks">x${formatStacks(slot.stacks)}</span>` +
       '</div>'
     );
   }
@@ -260,21 +265,29 @@ function showGeneCard() {
   if (!info) return;
 
   paused = true;
+  // Do not let a stray Space fire an attack while the world is frozen.
+  attack.enabled = false;
   geneCard.style.display = 'flex';
 
   const tierColor = `#${TIER_COLORS[info.tier].toString(16).padStart(6, '0')}`;
+  const fmt = (v) => String(Math.round(v * 10) / 10);
 
   let actionText;
+  let mergeText;
   if (info.kind === 'new') {
     actionText = `Lock into slot ${info.slotIndex + 1} · permanent`;
+    mergeText = 'First stack · locks this species permanently';
   } else if (info.kind === 'full') {
     actionText = 'All slots locked — cannot take this gene';
+    mergeText = 'Skip this one';
   } else if (info.kind === 'upgrade') {
-    actionText = `Upgrade ${TIER_LABELS[info.currentTier]} → ${TIER_LABELS[info.nextTier]}`;
-  } else if (info.nextTier) {
-    actionText = `Merge ${info.merge}/3 → ${TIER_LABELS[info.nextTier]}`;
+    actionText =
+      `${TIER_LABELS[info.currentTier]} → ${TIER_LABELS[info.nextTier]} · ` +
+      `stacks ${fmt(info.currentStacks)} → ${fmt(info.stacks)}`;
+    mergeText = 'Quality upgraded · stacks converted proportionally';
   } else {
-    actionText = `Merge ${info.merge}/3`;
+    actionText = `Stacks ${fmt(info.currentStacks)} → ${fmt(info.stacks)}`;
+    mergeText = `Merge ${info.merge}/3`;
   }
 
   geneCard.innerHTML = [
@@ -282,11 +295,14 @@ function showGeneCard() {
     `  <div class="gene-card-tier" style="color:${tierColor}">${TIER_LABELS[info.tier]}</div>`,
     `  <div class="gene-card-title">${info.label} Gene</div>`,
     `  <div class="gene-card-desc">${info.description}</div>`,
+    `  <div class="gene-card-per">${info.perLayerText}</div>`,
+    `  <div class="gene-card-cap">${info.capText}</div>`,
     `  <div class="gene-card-action">${actionText}</div>`,
-    `  <div class="gene-card-stacks">Stacks ${info.stacks}</div>`,
+    `  <div class="gene-card-stacks">${mergeText}</div>`,
+    `  <div class="gene-card-rule">${info.stackRule}</div>`,
     '  <div class="gene-card-buttons">',
-    `    <button class="gene-take"${info.kind === 'full' ? ' disabled' : ''}>Take</button>`,
-    '    <button class="gene-skip">Skip</button>',
+    `    <button class="gene-take"${info.kind === 'full' ? ' disabled' : ''}>Take <kbd>F</kbd></button>`,
+    '    <button class="gene-skip">Skip <kbd>G</kbd></button>',
     '  </div>',
     '</div>',
   ].join('');
@@ -304,10 +320,25 @@ function resolveGene(take) {
   genes.resolve(take);
   geneCard.style.display = 'none';
   paused = false;
+  attack.enabled = true;
+  // Drop any arrow keys pressed while the card was up.
+  player.stop();
   // Throw away the frozen time so the world does not jump on resume.
   clock.getDelta();
   renderGeneBar();
 }
+
+// Keyboard shortcuts for the gene card: F takes, G skips.
+window.addEventListener('keydown', (event) => {
+  if (geneCard.style.display === 'none') return;
+  if (event.code === 'KeyF' || event.code === 'Enter') {
+    event.preventDefault();
+    resolveGene(true);
+  } else if (event.code === 'KeyG') {
+    event.preventDefault();
+    resolveGene(false);
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Per-frame interaction state
@@ -1191,6 +1222,18 @@ renderer.setAnimationLoop(() => {
           health.growMaxHp(KILL_MAX_HP_GAIN);
           // And it may drop a gene orb of that species.
           genes.maybeDrop(enemy, runTime);
+
+          // Once every gene is legendary, orbs stop; kills feed stacks instead.
+          const grown = genes.grantStackOnKill(enemy.elite);
+          if (grown) {
+            hud.showAction(
+              `${GENE_TYPES[grown.key].label} gene +1 stack`,
+              'gene',
+              '#ffc83d',
+              1200
+            );
+            renderGeneBar();
+          }
         });
         enemies = enemies.filter((enemy) => !destroyed.includes(enemy));
         sound.kill();
