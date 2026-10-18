@@ -12,6 +12,31 @@ export const ENEMY_HOVER = 38;
 /** Chance a spawned insect is an elite (gold-edged, guaranteed gene drop). */
 export const ELITE_CHANCE = 0.1;
 
+// --- Bosses ---------------------------------------------------------------
+/** Body scale for a boss, relative to its species. */
+export const BOSS_SCALE = 4.5;
+/** Health multiplier applied to the species base HP. */
+export const BOSS_HP_MULT = 18;
+/** Extra flat armor for bosses, added on top of the species value. */
+export const BOSS_ARMOR_BONUS = 0.15;
+/** Contact-damage multiplier for bosses. */
+export const BOSS_DAMAGE_MULT = 1.8;
+/** Score multiplier for killing a boss. */
+export const BOSS_POINT_MULT = 12;
+/** Speed multiplier while a boss is chasing. */
+export const BOSS_SPEED_SCALE = 0.85;
+/** Seconds between summon waves from a boss. */
+export const BOSS_SUMMON_INTERVAL = 7;
+/** How many insects a boss calls in per wave. */
+export const BOSS_SUMMON_COUNT = 2;
+/** Below this fraction of max HP a boss becomes enraged (faster, harder hits). */
+export const BOSS_ENRAGE_THRESHOLD = 0.4;
+/** Speed multiplier once enraged. */
+export const BOSS_ENRAGE_SPEED = 1.35;
+
+/** Species a boss can take the form of. */
+export const BOSS_SPECIES = ['beetle', 'centipede', 'mole'];
+
 // Spawn positions are chosen by main.js: on a board this large, insects have
 // to appear relative to the hero rather than at fixed map corners.
 
@@ -444,7 +469,7 @@ export class Enemy {
    * @param {string} [typeKey] Which archetype to spawn.
    * @param {boolean} [elite] Force elite on/off; defaults to a random roll.
    */
-  constructor(scene, spawnPoint, typeKey = 'fly', elite = Math.random() < ELITE_CHANCE) {
+  constructor(scene, spawnPoint, typeKey = 'fly', elite = Math.random() < ELITE_CHANCE, options = {}) {
     this.scene = scene;
 
     /** Archetype definition. */
@@ -452,19 +477,32 @@ export class Enemy {
     /** Archetype key, handy for debugging. */
     this.typeKey = this.type.key;
 
+    /** Bosses are the same species scaled up and made far tougher. */
+    this.boss = options.boss === true;
+    /** Visual scale applied to the whole body. */
+    this.scale = this.boss ? BOSS_SCALE : 1;
+
     /** How much of the difficulty-driven base speed this species uses. */
     this.speedScale = this.type.speedScale;
     /** Current speed in world units per second. */
-    this.speed = ENEMY_SPEED * this.speedScale;
+    this.speed = ENEMY_SPEED * this.speedScale * (this.boss ? BOSS_SPEED_SCALE : 1);
 
     /** Remaining hit points. */
-    this.maxHp = this.type.hp;
+    this.baseMaxHp = this.type.hp;
+    this.maxHp = this.boss ? Math.round(this.type.hp * BOSS_HP_MULT) : this.type.hp;
     this.hp = this.maxHp;
 
     /** Fraction of incoming damage ignored (0–1). */
-    this.armor = this.type.armor || 0;
+    this.armor = Math.min(0.95, (this.type.armor || 0) + (this.boss ? BOSS_ARMOR_BONUS : 0));
     /** Damage this species deals on contact. */
-    this.contactDamage = this.type.contactDamage || 20;
+    this.contactDamage = (this.type.contactDamage || 20) * (this.boss ? BOSS_DAMAGE_MULT : 1);
+    /** Points awarded on death. */
+    this.points = this.type.points * (this.boss ? BOSS_POINT_MULT : 1);
+
+    /** Seconds until the boss may summon another wave (bosses only). */
+    this.summonTimer = this.boss ? BOSS_SUMMON_INTERVAL : 0;
+    /** Set once the boss has entered its enraged phase. */
+    this.enraged = false;
 
     // World-space holder on the ground plane; the body is lifted to hover.
     this.group = new THREE.Group();
@@ -474,6 +512,7 @@ export class Enemy {
     // Fresh copy of the blueprint, lifted so the insect flies above the board.
     this.visual = getBlueprint(this.typeKey).clone(true);
     this.visual.position.z = ENEMY_HOVER;
+    if (this.scale !== 1) this.visual.scale.setScalar(this.scale);
     this.group.add(this.visual);
 
     // Elites wear a gold ring and always drop a gene.
@@ -502,6 +541,23 @@ export class Enemy {
     // Wing-flap phase, randomised so a swarm doesn't beat in lockstep.
     this.flapPhase = Math.random() * Math.PI * 2;
 
+    // Bosses get a slow, glowing halo so they read as a threat at a glance.
+    if (this.boss) {
+      const halo = new THREE.Mesh(
+        new THREE.TorusGeometry(this.type.radius * this.scale * 1.35, 3, 8, 40),
+        new THREE.MeshStandardMaterial({
+          color: 0xff3d6e,
+          emissive: 0xff2d5e,
+          emissiveIntensity: 1.4,
+          roughness: 0.35,
+        })
+      );
+      halo.rotation.x = Math.PI / 2;
+      halo.position.z = 6;
+      this.group.add(halo);
+      this.halo = halo;
+    }
+
     // Countdown for the "took a hit but survived" swell.
     this.hitFlash = 0;
 
@@ -527,6 +583,40 @@ export class Enemy {
    *
    * @param {number} baseSpeed The shared, difficulty-scaled base speed.
    */
+  /**
+   * Collision radius on the ground plane, scaled for bosses.
+   *
+   * @returns {number}
+   */
+  get radius() {
+    return this.type.radius * this.scale;
+  }
+
+  /**
+   * Bosses shed a wave of minions on a timer, and go berserk once wounded.
+   *
+   * @param {number} delta Seconds since the previous frame.
+   * @returns {boolean} True when this frame's summon is due.
+   */
+  tickBoss(delta) {
+    if (!this.boss) return false;
+
+    // Enrage once the bar drops below the threshold; the caller reads
+    // `enraged` to drive the aura and the speed bump.
+    if (!this.enraged && this.hp <= this.maxHp * BOSS_ENRAGE_THRESHOLD) {
+      this.enraged = true;
+      this.speed *= BOSS_ENRAGE_SPEED;
+      if (this.halo) this.halo.material.emissiveIntensity = 2.6;
+    }
+
+    this.summonTimer -= delta;
+    if (this.summonTimer <= 0) {
+      this.summonTimer = BOSS_SUMMON_INTERVAL * (this.enraged ? 0.6 : 1);
+      return true;
+    }
+    return false;
+  }
+
   setBaseSpeed(baseSpeed) {
     this.speed = baseSpeed * this.speedScale;
   }

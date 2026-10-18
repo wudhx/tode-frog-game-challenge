@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { createCamera } from './components/Camera.js';
 import { createRenderer } from './components/Renderer.js';
 import { Player } from './components/Player.js';
-import { Enemy, pickEnemyType } from './components/Enemy.js';
+import { Enemy, pickEnemyType, BOSS_SPECIES, BOSS_SUMMON_COUNT } from './components/Enemy.js';
 import { Map, BOARD_HALF, TILE_SIZE } from './components/Map.js';
 import {
   addHouses,
@@ -53,6 +53,21 @@ const LEVEL_DAMAGE_REDUCTION_MAX = 0.15;
  * reach 100% and the frog would be invincible.
  */
 const MAX_TOTAL_DAMAGE_REDUCTION = 0.8;
+
+// --- Bosses ---------------------------------------------------------------
+/** Score at which the first boss appears. */
+const FIRST_BOSS_SCORE = 2000;
+/** Score gap between later bosses. */
+const BOSS_SCORE_STEP = 3000;
+/** Permanent stat bonus ranges for downing a boss. */
+const BOSS_BONUS_HP_MIN = 10;
+const BOSS_BONUS_HP_MAX = 40;
+const BOSS_BONUS_ATK_MIN = 0.1;
+const BOSS_BONUS_ATK_MAX = 0.4;
+const BOSS_BONUS_DEF_MIN = 0.01;
+const BOSS_BONUS_DEF_MAX = 0.04;
+/** How much the bonus range scales up per boss already killed. */
+const BOSS_BONUS_GROWTH = 0.25;
 
 /**
  * The hero's derived combat stats.
@@ -223,6 +238,11 @@ const powerUps = new PowerUpManager(scene);
 const genes = new GeneSystem(scene, 3);
 const talents = new TalentSystem(TALENT_SLOTS);
 const awakening = new Awakening();
+
+/** Permanent stats earned from bosses this run. */
+const bossBonus = { maxHp: 0, attack: 0, defense: 0 };
+/** The live boss (also present in `enemies`), or null. */
+let currentBoss = null;
 /** Frozen while a gene card or the pause menu is open. */
 let paused = false;
 /** Seconds since the run started, used for the drop-rate curve. */
@@ -318,6 +338,14 @@ renderTalentPips();
 const awakenBar = document.createElement('div');
 awakenBar.className = 'awaken-bar';
 document.body.appendChild(awakenBar);
+
+// ---------------------------------------------------------------------------
+// Boss health bar
+// ---------------------------------------------------------------------------
+const bossBar = document.createElement('div');
+bossBar.className = 'boss-bar';
+bossBar.style.display = 'none';
+document.body.appendChild(bossBar);
 
 /** Rewrites the awakening meter: charge state, progress and timer. */
 function renderAwakenBar() {
@@ -942,6 +970,15 @@ function resetGame() {
   // The awakening bar empties with the run.
   awakening.reset();
   renderAwakenBar();
+
+  // Bosses and their rewards reset with the run.
+  boss = null;
+  nextBossScore = FIRST_BOSS_SCORE;
+  bossesSpawned = 0;
+  bossBonus.maxHp = 0;
+  bossBonus.attack = 0;
+  bossBonus.defense = 0;
+  renderBossBar();
   runTime = 0;
   paused = false;
   geneCard.style.display = 'none';
@@ -1000,7 +1037,91 @@ function spawnEnemy(speed) {
   const enemy = new Enemy(scene, pickSpawnPoint(), pickEnemyType(score.value));
   if (typeof speed === 'number') enemy.setBaseSpeed(speed);
   enemies.push(enemy);
+  return enemy;
 }
+
+// ---------------------------------------------------------------------------
+// Bosses
+// ---------------------------------------------------------------------------
+/** The boss currently alive, or null. */
+let boss = null;
+let nextBossScore = FIRST_BOSS_SCORE;
+let bossesSpawned = 0;
+
+/**
+ * Spawns a boss and prepares the HUD for it.
+ *
+ * The boss replaces the ordinary swarm pressure: while one is alive the normal
+ * spawner pauses, so the fight reads as a duel instead of a pile-on.
+ */
+function spawnBoss() {
+  const species = BOSS_SPECIES[Math.floor(Math.random() * BOSS_SPECIES.length)];
+  const angle = Math.random() * Math.PI * 2;
+  const point = new THREE.Vector2(
+    player.position.x + Math.cos(angle) * 620,
+    player.position.y + Math.sin(angle) * 620
+  );
+  clampToBoard(point, 120);
+
+  const enemy = new Enemy(scene, point, species, false, { boss: true });
+  enemies.push(enemy);
+  boss = enemy;
+  bossesSpawned += 1;
+  bossBar.style.display = 'block';
+  renderBossBar();
+  sound.awaken();
+  hud.showAction(
+    `A giant ${enemy.type.label} appears!`,
+    'boss',
+    '#ff3d6e',
+    2200
+  );
+  return enemy;
+}
+
+/** Rewrites the boss health bar; hides it when no boss is alive. */
+function renderBossBar() {
+  if (!boss) {
+    bossBar.style.display = 'none';
+    return;
+  }
+  const pct = Math.max(0, Math.round((boss.hp / boss.maxHp) * 100));
+  bossBar.innerHTML =
+    '<div class="boss-head">' +
+    `<span class="boss-name">Giant ${boss.type.label}</span>` +
+    `<span class="boss-pct">${pct}%</span>` +
+    '</div>' +
+    `<div class="boss-track"><span style="width:${pct}%"></span></div>`;
+  bossBar.dataset.enraged = boss.enraged ? 'yes' : 'no';
+}
+
+/**
+ * Awards a random permanent stat bonus for downing a boss.
+ *
+ * Later bosses roll bigger numbers, and the roll is weighted upward each time
+ * so the reward keeps pace with the difficulty curve.
+ */
+function grantBossBonus() {
+  const tier = Math.min(1, bossesSpawned * BOSS_BONUS_GROWTH);
+  const roll = (min, max) => min + Math.random() * (max - min) * (1 + tier);
+
+  const hpGain = Math.round(roll(BOSS_BONUS_HP_MIN, BOSS_BONUS_HP_MAX));
+  const atkGain = Math.round(roll(BOSS_BONUS_ATK_MIN, BOSS_BONUS_ATK_MAX) * 10) / 10;
+  const defGain = roll(BOSS_BONUS_DEF_MIN, BOSS_BONUS_DEF_MAX);
+
+  bossBonus.maxHp += hpGain;
+  bossBonus.attack += atkGain;
+  bossBonus.defense += defGain;
+  health.growMaxHp(hpGain);
+
+  hud.showAction(
+    `Boss slain: +${hpGain} HP · +${atkGain.toFixed(1)} ATK · +${(defGain * 100).toFixed(0)}% DEF`,
+    'boss',
+    '#ffc83d',
+    2600
+  );
+}
+
 
 // ---------------------------------------------------------------------------
 // Geometry helpers
@@ -1280,11 +1401,14 @@ function gameLoop() {
   // --- Gene contributions --------------------------------------------------
   const geneStats = genes.stats();
   playerStats.attackPower =
-    (1 + (level - 1) * 0.05 + geneStats.attackPower + talentStats.attackPower) *
+    (1 + (level - 1) * 0.05 + geneStats.attackPower + talentStats.attackPower + bossBonus.attack) *
     awaken.attack;
   playerStats.damageReduction = Math.min(
     MAX_TOTAL_DAMAGE_REDUCTION,
-    Math.max(0, levelReduction + geneStats.damageReduction + talentReduction)
+    Math.max(
+      0,
+      levelReduction + geneStats.damageReduction + talentReduction + bossBonus.defense
+    )
   );
   playerStats.lifesteal = Math.min(0.35, geneStats.lifesteal + talentStats.lifesteal);
 
@@ -1727,8 +1851,9 @@ function gameLoop() {
       if (destroyed.length > 0) {
         destroyed.forEach((enemy) => {
           enemy.dispose();
-          // The Scavenger talent scales every kill reward.
-          const points = Math.round(enemy.type.points * (1 + talentStats.scoreMult));
+          // The Scavenger talent scales every kill reward; bosses carry their
+          // own much larger point value.
+          const points = Math.round((enemy.points || enemy.type.points) * (1 + talentStats.scoreMult));
           score.addKillPoints(points);
           // Those same points charge the awakening bar.
           if (awakening.addScore(points)) {
@@ -1739,10 +1864,17 @@ function gameLoop() {
           // his level over a run.
           health.growMaxHp(KILL_MAX_HP_GAIN);
           // And it may drop a gene orb of that species.
-          genes.maybeDrop(enemy, runTime);
+          genes.maybeDrop(enemy, runTime, enemy.boss);
+
+          // Bosses pay out a permanent stat bonus on top of the orb.
+          if (enemy.boss) {
+            if (boss === enemy) boss = null;
+            renderBossBar();
+            grantBossBonus();
+          }
 
           // Once every gene is legendary, orbs stop; kills feed stacks instead.
-          const grown = genes.grantStackOnKill(enemy.elite);
+          const grown = genes.grantStackOnKill(enemy.elite || enemy.boss);
           if (grown) {
             hud.showAction(
               `${GENE_TYPES[grown.key].label} gene: +1 stack`,
@@ -1797,10 +1929,30 @@ function gameLoop() {
   // =======================================================================
   // 5. ENEMY SPAWNING
   // =======================================================================
+  // Bosses arrive on a score schedule. While one is alive the ordinary
+  // spawner takes a break so the fight stays readable.
+  if (!boss && score.value >= nextBossScore) {
+    spawnBoss();
+    nextBossScore += BOSS_SCORE_STEP;
+  }
+
   spawnTimer -= delta;
   if (spawnTimer <= 0) {
-    spawnEnemy(params.enemySpeed);
+    if (!boss) spawnEnemy(params.enemySpeed);
     spawnTimer = params.enemySpawnDelay;
+  }
+
+  // Boss behaviour: summon waves and read the enrage flag.
+  if (boss) {
+    if (boss.tickBoss(delta)) {
+      for (let i = 0; i < BOSS_SUMMON_COUNT; i++) {
+        const minion = spawnEnemy(params.enemySpeed);
+        // Minions of a summon come in on the boss, so they join the fight at once.
+        if (minion) minion.group.position.set(boss.group.position.x, boss.group.position.y, 0);
+      }
+      hud.showAction('The boss calls its brood!', 'boss', '#ff3d6e', 1500);
+    }
+    renderBossBar();
   }
 
   // =======================================================================
@@ -2058,6 +2210,36 @@ window.__hud = {
   get genes() { return genes; },
   get talents() { return talents; },
   get awakening() { return awakening; },
+  get boss() { return boss; },
+  get bossBonus() { return bossBonus; },
+  get nextBossScore() { return nextBossScore; },
+  get bossesSpawned() { return bossesSpawned; },
+
+  /** Spawns a boss right now. Only for arranging a test. */
+  forceBoss(species = 'beetle') {
+    const angle = Math.random() * Math.PI * 2;
+    const point = new THREE.Vector2(
+      player.position.x + Math.cos(angle) * 500,
+      player.position.y + Math.sin(angle) * 500
+    );
+    clampToBoard(point, 120);
+    const enemy = new Enemy(scene, point, species, false, { boss: true });
+    enemies.push(enemy);
+    boss = enemy;
+    bossesSpawned += 1;
+    bossBar.style.display = 'block';
+    renderBossBar();
+    return enemy;
+  },
+
+  /** Closes the boss bar without killing anything. Only for arranging a test. */
+  clearBoss() {
+    if (boss) boss.dispose();
+    boss = null;
+    enemies = enemies.filter((enemy) => !enemy.boss);
+    renderBossBar();
+    bossBar.style.display = 'none';
+  },
   get paused() { return paused; },
   get scenery() { return scenery; },
 

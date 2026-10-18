@@ -712,6 +712,73 @@ canvas.game {
   opacity: 0.55;
 }
 
+/* --- Boss health bar ----------------------------------------------------- */
+.boss-bar {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 14;
+  display: none;
+  width: min(520px, calc(100vw - 48px));
+  padding: 8px 14px 10px;
+  border-radius: 14px;
+  background: rgba(38, 10, 20, 0.86);
+  box-shadow: 0 8px 26px rgba(255, 45, 94, 0.28);
+  color: #ffe8ee;
+  font-family: inherit;
+  user-select: none;
+  pointer-events: none;
+}
+
+.boss-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.boss-name {
+  text-transform: uppercase;
+}
+
+.boss-pct {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+.boss-track {
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+
+.boss-track span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ff3d6e, #ff8a5c);
+  transition: width 0.2s ease;
+}
+
+.boss-bar[data-enraged='yes'] {
+  box-shadow: 0 0 0 1px rgba(255, 61, 110, 0.6), 0 8px 30px rgba(255, 45, 94, 0.5);
+  animation: boss-pulse 0.9s ease-in-out infinite;
+}
+
+.boss-bar[data-enraged='yes'] .boss-track span {
+  background: linear-gradient(90deg, #ff1f4b, #ffd23f);
+}
+
+@keyframes boss-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(255, 61, 110, 0.5), 0 8px 24px rgba(255, 45, 94, 0.35); }
+  50%      { box-shadow: 0 0 0 2px rgba(255, 61, 110, 0.9), 0 8px 34px rgba(255, 45, 94, 0.65); }
+}
+
 /* --- Awakening bar ------------------------------------------------------- */
 .awaken-bar {
   position: fixed;
