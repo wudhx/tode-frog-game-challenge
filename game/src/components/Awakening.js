@@ -1,9 +1,10 @@
 /**
  * Awakening — the panic button.
  *
- * Score charges one bar every `AWAKEN_SCORE_PER_CHARGE` points. Only one charge
- * can be banked. Pressing E spends it for `AWAKEN_DURATION` seconds of greatly
- * boosted power, and the run goes back to normal when it runs out.
+ * Score charges the bar every `AWAKEN_SCORE_PER_CHARGE` points, and up to
+ * `AWAKEN_MAX_CHARGES` charges can sit in the bank at once. Pressing E spends
+ * one for `AWAKEN_DURATION` seconds of greatly boosted power; the run goes
+ * back to normal when it runs out, and any charges still banked stay there.
  *
  * Everything here is a multiplier the main loop folds into the same derived
  * stats it already computes, so an awakening can never bypass the global
@@ -11,15 +12,21 @@
  */
 
 /** Points needed to earn one awakening charge. */
-export const AWAKEN_SCORE_PER_CHARGE = 1000;
+export const AWAKEN_SCORE_PER_CHARGE = 1500;
 /**
  * A single huge payout (a boss kill) can bank a charge but cannot overflow
  * the counter: whatever is left after the charge is dropped. Without this a
  * boss kill would hand back most of a second bar.
  */
 export const AWAKEN_MAX_PAYOUT_CARRY = AWAKEN_SCORE_PER_CHARGE;
-/** How many charges can be banked at once. */
-export const AWAKEN_MAX_CHARGES = 1;
+/**
+ * How many charges can be banked at once.
+ *
+ * Three is the whole point of the bank: an awakening is a panic button, and a
+ * panic button the player is afraid to spend is not a panic button. Holding
+ * three means one can be burnt early without giving up the rescue charge.
+ */
+export const AWAKEN_MAX_CHARGES = 3;
 /** How long an awakening lasts, in seconds. */
 export const AWAKEN_DURATION = 10;
 /** Attack multiplier while awakened. */
@@ -86,13 +93,16 @@ export class Awakening {
   }
 
   /**
-   * Spends a charge and starts the boost.
+   * Spends one charge and starts the boost.
+   *
+   * With a three-charge bank this must decrement, not clear: an early
+   * awakening should cost one charge, not the whole reserve.
    *
    * @returns {boolean} True if the awakening actually started.
    */
   activate() {
     if (!this.ready) return false;
-    this.charges = 0;
+    this.charges -= 1;
     this.remaining = AWAKEN_DURATION;
     return true;
   }

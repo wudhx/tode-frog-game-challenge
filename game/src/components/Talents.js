@@ -1,29 +1,35 @@
 /**
  * Talent awakenings.
  *
- * Every three minutes the run offers three random talents out of a pool of
- * sixteen. The player picks one, and the choice is permanent for that run.
- * Four can be held at once; the Lucky talent adds a fifth.
+ * Every `TALENT_INTERVAL` seconds the run offers three random talents out of a
+ * pool of sixteen. The player picks one, and the choice is permanent for that
+ * run. Four can be held at once; the Lucky talent adds a fifth.
  *
  * Talents are pure stat modifiers — the main loop reads `stats()` once per
  * frame and layers them on top of level and gene bonuses, so a talent can
  * never bypass the damage-reduction ceiling.
  *
- * ## Talent levels
+ * ## Talent levels follow the hero, not the pick count
  *
- * A talent is not a flat number. Each one starts at level 1 when taken, and
- * every later offer on the *same* talent raises it a level instead of giving
- * the player a dead pick. Levels scale the base effect linearly:
+ * A talent is not a flat number, but levelling it by re-picking the same card
+ * meant a full build needed the same offer five times: fifteen minutes of
+ * waiting for one talent, in a run that lasts about that long in total. So
+ * ranks are driven by the hero's level instead — every
+ * `TALENT_HERO_LEVELS_PER_LEVEL` hero levels raises *every* talent one rank.
+ *
+ *     hero level  1  2 | 3  4 | 5  6 | 7  8 | 9+
+ *     talent rank 1  1 | 2  2 | 3  3 | 4  4 | 5
+ *
+ * The upshot: picking a talent is a one-time decision about *what* you want,
+ * and the game handles *how strong* it gets. That also means an offer never
+ * repeats a talent you already hold — the three cards are always three new
+ * options.
  *
  *     value(n) = base + perLevel * (n - 1)
- *
- * The panel therefore has to show both the level and what that level is
- * currently worth, or the player cannot tell whether a second copy is
- * worth taking.
  */
 
 /** Seconds between talent offers. */
-export const TALENT_INTERVAL = 180;
+export const TALENT_INTERVAL = 75;
 /** How many talents a single run may hold. */
 export const TALENT_SLOTS = 4;
 /** How many talents the Lucky talent adds on top of that. */
@@ -34,6 +40,14 @@ export const TALENT_CHOICES = 3;
 export const TALENT_POOL_SIZE = 16;
 /** Highest level a single talent can reach. */
 export const TALENT_MAX_LEVEL = 5;
+/**
+ * Hero levels needed to raise every talent by one rank.
+ *
+ * Two keeps the fifth rank reachable at hero level 9, which a run hits in
+ * roughly six minutes — early enough that the build is finished while the
+ * player still has a fight left to use it in.
+ */
+export const TALENT_HERO_LEVELS_PER_LEVEL = 2;
 
 /**
  * Every talent in the pool.
@@ -197,6 +211,40 @@ export function talentMaxLevel(talent) {
 }
 
 /**
+ * The rank a talent sits at for a given hero level.
+ *
+ * This is the whole level system: nothing is stored per talent, so the panel,
+ * the stat math and the offer cards cannot drift apart. Lucky caps itself at
+ * one, because its effect is a gene slot rather than a number.
+ *
+ * @param {number} heroLevel Hero level (1–15).
+ * @param {object} [talent] Definition, used for its per-talent cap.
+ * @returns {number} 1-based rank.
+ */
+export function talentLevelFor(heroLevel, talent) {
+  const step = Math.floor((Math.max(1, heroLevel) - 1) / TALENT_HERO_LEVELS_PER_LEVEL) + 1;
+  const cap = talent ? talentMaxLevel(talent) : TALENT_MAX_LEVEL;
+  return Math.min(cap, Math.max(1, step));
+}
+
+/**
+ * Hero level at which a talent reaches the next rank, or null when maxed.
+ *
+ * Used by the panel to print "Lv.4 at hero 7" instead of leaving the player
+ * to guess when the next bump lands.
+ *
+ * @param {number} heroLevel Current hero level.
+ * @param {object} talent Definition from TALENTS.
+ * @returns {number|null}
+ */
+export function nextTalentRankLevel(heroLevel, talent) {
+  const current = talentLevelFor(heroLevel, talent);
+  if (current >= talentMaxLevel(talent)) return null;
+  // Rank n+1 starts at hero level n * 2 + 1, so rank 2 lands on hero 3.
+  return current * TALENT_HERO_LEVELS_PER_LEVEL + 1;
+}
+
+/**
  * The effect bag of one talent at a given level.
  *
  * This is the single source of truth for "what is this talent worth right
@@ -280,9 +328,8 @@ export class TalentSystem {
     /**
      * Talents held this run, in pick order.
      *
-     * Each entry is `{ ...talent, level }`. Keeping the level on the entry
-     * (rather than in a side map) means every consumer that already walks
-     * `owned` sees it for free.
+     * These are the plain definitions: rank is derived from `heroLevel` every
+     * time it is read, so there is no per-entry level to keep in sync.
      */
     this.owned = [];
     /** Base slots; the Lucky talent adds to this at read time. */
@@ -295,6 +342,8 @@ export class TalentSystem {
     this.offersGiven = 0;
     /** How many offers were declined. */
     this.skipped = 0;
+    /** Hero level, pushed in by the main loop; drives every talent rank. */
+    this.heroLevel = 1;
   }
 
   /** Total slots, including the Lucky bonus. */
@@ -321,6 +370,34 @@ export class TalentSystem {
   }
 
   /**
+   * Mirrors the hero's level so ranks stay current.
+   *
+   * Called from the main loop; kept as a method (rather than reading Health
+   * directly) so the talent system stays testable without a live hero.
+   *
+   * @param {number} level Hero level.
+   * @returns {boolean} True when the rank of at least one talent changed.
+   */
+  syncHeroLevel(level) {
+    const before = this.heroLevel;
+    this.heroLevel = Math.max(1, level || 1);
+    if (before === this.heroLevel) return false;
+    return this.owned.some(
+      (talent) => talentLevelFor(before, talent) !== talentLevelFor(this.heroLevel, talent)
+    );
+  }
+
+  /**
+   * Current rank of a talent for the hero's level.
+   *
+   * @param {object} talent Definition from TALENTS.
+   * @returns {number}
+   */
+  levelOf(talent) {
+    return talentLevelFor(this.heroLevel, talent);
+  }
+
+  /**
    * Advances the offer timer.
    *
    * @param {number} delta Seconds elapsed.
@@ -344,10 +421,10 @@ export class TalentSystem {
   /**
    * Rolls three distinct talents worth offering.
    *
-   * A talent that is already owned is still offered while it has levels left:
-   * taking it again levels it up. Without that, a four-slot build would run
-   * out of interesting picks and every later offer would be a talent the
-   * player has no use for.
+   * Only talents the player does not hold are eligible: ranks come from the
+   * hero's level, so a repeat card would do nothing at all. Every offer is
+   * therefore three genuinely new options, which is also why the interval
+   * could be shortened.
    *
    * @returns {Array<object>|null} The offer, or null when slots are full.
    */
@@ -356,11 +433,7 @@ export class TalentSystem {
       this.offer = null;
       return null;
     }
-    const pool = TALENTS.filter((talent) => {
-      const entry = this.ownedEntry(talent.key);
-      if (!entry) return true;
-      return entry.level < talentMaxLevel(talent);
-    });
+    const pool = TALENTS.filter((talent) => !this.ownedEntry(talent.key));
     // Shuffle a copy, then slice: never offer the same talent twice.
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -386,12 +459,8 @@ export class TalentSystem {
     }
     const talent = offer[index];
     const existing = this.ownedEntry(talent.key);
-    if (existing) {
-      // A repeat pick levels the talent up instead of spending a slot.
-      existing.level = Math.min(talentMaxLevel(talent), existing.level + 1);
-      return existing;
-    }
-    this.owned.push({ ...talent, level: 1 });
+    if (existing) return existing;
+    this.owned.push(talent);
     return this.owned[this.owned.length - 1];
   }
 
@@ -402,6 +471,7 @@ export class TalentSystem {
     this.timer = 0;
     this.offersGiven = 0;
     this.skipped = 0;
+    this.heroLevel = 1;
   }
 
   /**
@@ -411,8 +481,9 @@ export class TalentSystem {
    * cooldownMult, moveSpeed, maxHp, shieldMax, shieldMaxPercent, scoreMult,
    * extraGeneSlot.
    *
-   * Each talent contributes `talentEffectAt(talent, level)`, so a levelled
-   * talent is worth more without any extra bookkeeping here.
+   * Each talent contributes `talentEffectAt(talent, rank)`, where the rank is
+   * derived from the hero's level, so every talent the player owns grows
+   * automatically as he levels up.
    */
   stats() {
     const total = {
@@ -429,7 +500,7 @@ export class TalentSystem {
       extraGeneSlot: 0,
     };
     for (const entry of this.owned) {
-      const effect = talentEffectAt(entry, entry.level || 1);
+      const effect = talentEffectAt(entry, this.levelOf(entry));
       for (const [key, value] of Object.entries(effect)) {
         if (key in total) total[key] += value;
       }

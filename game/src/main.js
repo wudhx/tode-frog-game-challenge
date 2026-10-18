@@ -24,9 +24,12 @@ import {
   TalentSystem,
   TALENT_INTERVAL,
   TALENT_SLOTS,
+  TALENT_HERO_LEVELS_PER_LEVEL,
   TALENTS,
   talentEffectAt,
   talentMaxLevel,
+  talentLevelFor,
+  nextTalentRankLevel,
   formatTalentEffect,
 } from './components/Talents.js';
 import {
@@ -47,8 +50,24 @@ const PLAYER_HIT_DISTANCE = 45;
 /** Enemy vs. enemy: how close two insects may get. */
 const ENEMY_HIT_DISTANCE = 45;
 
-/** Maximum HP gained per kill — this is what drives the level curve. */
-const KILL_MAX_HP_GAIN = 3;
+/** Maximum HP gained per kill — this is what drives the level curve.
+ *
+ * Levels now gate talent ranks too, so this number does double duty. At 2.5
+ * HP a level costs 40 kills: roughly a minute in the opening stretch, and
+ * slower as the board fills up. The old 3.0 made that 33 kills, which pushed
+ * the hero up the curve faster than the fights around him got harder.
+ */
+const KILL_MAX_HP_GAIN = 2.5;
+
+/**
+ * Shield regeneration, expressed against the shield's own ceiling.
+ *
+ * Deliberately "out of combat" rather than on a timer: a shield that refills
+ * while the player is still being chewed on is just more HP, and one that
+ * never refills reads as a bug. Eight seconds of quiet buys a full bar.
+ */
+const SHIELD_REGEN_DELAY = 4;
+const SHIELD_REGEN_PER_SECOND = 0.12;
 
 /**
  * Level-based damage reduction is capped at 15%. Level alone must never make
@@ -108,6 +127,11 @@ const playerStats = {
   shield: 0,
   /** Shield ceiling, set by talents/gear. */
   shieldMax: 0,
+  /**
+   * Seconds since the shield last took (or dealt with) a hit. Drives the
+   * out-of-combat regeneration; see the shield block in `animate`.
+   */
+  shieldIdle: 0,
   /** Fraction of damage dealt returned as HP (0–1). */
   lifesteal: 0,
   /** Current tongue-blast reach, for the character panel. */
@@ -340,14 +364,15 @@ function renderTalentPips() {
     } else {
       // The pip tooltip carries the live value, so hovering shows what the
       // talent is worth *now* rather than what it was worth at level 1.
-      const live = formatTalentEffect(talentEffectAt(talent, talent.level));
+      const rank = talents.levelOf(talent);
+      const live = formatTalentEffect(talentEffectAt(talent, rank));
       pips.push(
-        `<span class="talent-pip filled" title="${talent.name} Lv.${talent.level} — ${live}">${
+        `<span class="talent-pip filled" title="${talent.name} Lv.${rank} — ${live}">${
           talent.name
             .split(' ')
             .map((word) => word[0])
             .join('')
-        }<i class="talent-pip-level">${talent.level}</i></span>`
+        }<i class="talent-pip-level">${rank}</i></span>`
       );
     }
   }
@@ -540,27 +565,25 @@ function showTalentOffer() {
 
   const cards = offer
     .map((talent, index) => {
-      // A talent already in the build is a *level-up* card: show what it
-      // reads now and what it becomes, otherwise the player has to remember
-      // the numbers from three minutes ago.
-      const owned = talents.ownedEntry(talent.key);
-      const nextLevel = owned ? owned.level + 1 : 1;
-      const from = owned ? formatTalentEffect(talentEffectAt(talent, owned.level)) : null;
-      const to = formatTalentEffect(talentEffectAt(talent, nextLevel));
-      const badge = owned
-        ? `<span class="talent-up">Lv.${owned.level} → Lv.${nextLevel}</span>`
-        : '<span class="talent-new">New</span>';
+      // Ranks come from the hero's level, so every card is a *new* talent and
+      // starts at whatever rank the hero is already at — not at level 1. The
+      // card has to say that, or a level-8 hero would read "+1 attack" and
+      // expect far less than he actually gets.
+      const rank = talents.levelOf(talent);
+      const now = formatTalentEffect(talentEffectAt(talent, rank));
+      const nextRankLevel = nextTalentRankLevel(talents.heroLevel, talent);
+      const badge = `<span class="talent-new">Lv.${rank}</span>`;
       return (
         '<button class="talent-choice" data-index="' + index + '">' +
         '  <div class="talent-key">' + (index + 1) + '</div>' +
         // The name carries its own data attribute so the badge next to it can
-        // change shape (New vs Lv.2 -> Lv.3) without anyone having to parse it.
+        // change shape without anyone having to parse the visible text.
         `  <div class="talent-name" data-name="${talent.name}">${talent.name}${badge}</div>` +
-        (owned
-          ? `  <div class="talent-effect from">was ${from}</div>` +
-            `  <div class="talent-effect to">becomes ${to}</div>`
-          : `  <div class="talent-effect">${to}</div>`) +
+        `  <div class="talent-effect">${now}</div>` +
         '  <div class="talent-blurb">' + talent.blurb + '</div>' +
+        (nextRankLevel
+          ? `  <div class="talent-rank-note">Rank ${rank + 1} at hero Lv.${nextRankLevel}</div>`
+          : '  <div class="talent-rank-note">Already at max rank</div>') +
         '</button>'
       );
     })
@@ -763,24 +786,29 @@ function renderCharPanel() {
   const geneStats = genes.stats();
   const talentStats = talents.stats();
 
-  // --- Talents, with the level each one is currently at -------------------
+  // --- Talents, with the rank the hero's level puts each one at ------------
   const talentRows = talents.owned.length
     ? talents.owned
         .map((entry) => {
           const max = talentMaxLevel(entry);
-          const live = talentEffectAt(entry, entry.level);
+          const rank = talents.levelOf(entry);
+          const live = talentEffectAt(entry, rank);
           const pips = Array.from({ length: max }, (_, i) =>
-            `<i class="lvl-pip${i < entry.level ? ' on' : ''}"></i>`
+            `<i class="lvl-pip${i < rank ? ' on' : ''}"></i>`
           ).join('');
-          const next =
-            entry.level < max
-              ? `Next Lv.${entry.level + 1}: ${formatTalentEffect(talentEffectAt(entry, entry.level + 1))}`
-              : 'Maxed';
+          // Ranks track the hero, so the useful line is not "what is rank 2"
+          // but "which hero level buys it".
+          const nextRankLevel = nextTalentRankLevel(talents.heroLevel, entry);
+          const next = nextRankLevel
+            ? `Rank ${rank + 1} at hero Lv.${nextRankLevel}: ${formatTalentEffect(
+                talentEffectAt(entry, rank + 1)
+              )}`
+            : 'Maxed';
           return (
             '<div class="char-talent">' +
             '<div class="char-talent-head">' +
             `<b>${entry.name}</b>` +
-            `<span class="char-talent-level">Lv.${entry.level} / ${max}</span>` +
+            `<span class="char-talent-level">Lv.${rank} / ${max}</span>` +
             '</div>' +
             `<div class="lvl-pips">${pips}</div>` +
             // The green line is what the hero has right now — it is read from
@@ -792,7 +820,8 @@ function renderCharPanel() {
         })
         .join('')
     : '<div class="char-talent empty">' +
-      `No talents yet — ${talents.slotCount} slots, one offered every 3 minutes.</div>`;
+      `No talents yet — ${talents.slotCount} slots, one offered every ${TALENT_INTERVAL}s. ` +
+      'Ranks rise with your level.</div>';
 
   const awakenText = awakening.active
     ? `Active · ${awakening.remaining.toFixed(1)}s left`
@@ -882,7 +911,9 @@ function renderCharPanel() {
     ]),
     row('Shield', `${Math.round(playerStats.shield)} / ${Math.round(playerStats.shieldMax)}`, [
       ['Talents', talentStats.shieldMaxPercent ? signed(talentStats.shieldMaxPercent * 100, '%') : null],
-      ['Kills', 'refills to cap'],
+      // The old chip here claimed kills refill the shield, which was never
+      // true — the only refill is the out-of-combat regeneration below.
+      ['Regen', `${Math.round(SHIELD_REGEN_PER_SECOND * 100)}%/s after ${SHIELD_REGEN_DELAY}s`],
     ]),
     row('Gene slots', `${genes.slots.length}`, [
       ['Base', '3'],
@@ -890,7 +921,7 @@ function renderCharPanel() {
     ]),
     row('Awakening', awakenText, [
       ['Charge', `${AWAKEN_SCORE_PER_CHARGE} pts`],
-      ['Stored', awakening.ready ? '1' : '0'],
+      ['Banked', `${awakening.charges} / ${AWAKEN_MAX_CHARGES}`],
     ]),
   ].join('');
 
@@ -1110,6 +1141,7 @@ function resetGame() {
   lastTalentMaxHp = 0;
   lastTalentShieldMax = 0;
   playerStats.shield = 0;
+  playerStats.shieldIdle = 0;
   playerStats.shieldMax = 0;
   // The awakening bar empties with the run.
   awakening.reset();
@@ -1504,17 +1536,51 @@ function unstickEnemy(enemy, delta) {
   current.x = nextX;
   current.y = nextY;
 
-  // A long slide means the insect is orbiting rather than escaping. Point it
-  // at open ground and let it re-acquire the hero afterwards.
+  // A long slide means the insect is orbiting rather than escaping. Sliding
+  // cannot always win — in a tight cluster the tangent is blocked on both
+  // sides and the radial push has nowhere to go — so after 2.5s the only
+  // honest fix is to move it somewhere legal rather than let it grind against
+  // the bark for the rest of the run.
   if (enemy.stuckTimer > 2.5) {
-    const angle = Math.atan2(normalY, normalX) + Math.PI * 0.5 * enemy.slideSide;
-    enemy.wanderTarget.set(
-      current.x + Math.cos(angle) * 320,
-      current.y + Math.sin(angle) * 320
-    );
-    enemy.wanderTimer = 1.6;
+    const escape = findClearSpotNear(current, enemy.radius);
+    if (escape) {
+      current.x = escape.x;
+      current.y = escape.y;
+    }
     enemy.stuckTimer = 0;
+    enemy.slideSide = 0;
+    enemy.wanderTimer = 0;
   }
+}
+
+/**
+ * Finds the nearest spot to `point` that a body of `radius` can stand in.
+ *
+ * Probes rings outward and takes the first clear sample. Used as the last
+ * resort in `unstickEnemy`, where sliding has already failed.
+ *
+ * @param {{x: number, y: number}} point Where the body currently is.
+ * @param {number} radius Body radius.
+ * @returns {{x: number, y: number}|null} A legal spot, or null if the whole
+ *   neighbourhood is blocked (which should not happen on this board).
+ */
+function findClearSpotNear(point, radius) {
+  const clearance = radius * 0.7 + WALL_CLEARANCE;
+  const probe = new THREE.Vector3(0, 0, 0);
+  for (let ring = 1; ring <= 5; ring++) {
+    const distance = ring * 55;
+    for (let step = 0; step < 12; step++) {
+      const angle = (step / 12) * Math.PI * 2;
+      probe.set(point.x + Math.cos(angle) * distance, point.y + Math.sin(angle) * distance, 0);
+      if (collidesWithObstacle(probe, enemyObstacles, clearance)) continue;
+      // Clamping can shove the sample back into the trunk at the board edge,
+      // so the clamped point gets a second look before it is accepted.
+      clampToBoard(probe, radius);
+      if (collidesWithObstacle(probe, enemyObstacles, clearance)) continue;
+      return { x: probe.x, y: probe.y };
+    }
+  }
+  return null;
 }
 
 function isPowerUpSpotFree(x, y) {
@@ -1630,6 +1696,15 @@ function gameLoop() {
   const levelSpeed = 1 - (level - 1) * 0.01;
 
   // --- Talent contributions ------------------------------------------------
+  // Ranks are derived from the hero's level, so the mirror has to be updated
+  // before the sum is taken. A rank change is worth a HUD refresh, because the
+  // pip badges print the rank.
+  if (talents.syncHeroLevel(level)) {
+    renderTalentPips();
+    if (talents.owned.length > 0) {
+      hud.showAction(`Talents reached rank ${talentLevelFor(level)}`, 'talent', '#43b96b', 1400);
+    }
+  }
   const talentStats = talents.stats();
   const talentReduction = Math.max(0, talentStats.damageReduction);
   const talentSpeed = Math.max(-0.5, talentStats.moveSpeed);
@@ -1695,6 +1770,8 @@ function gameLoop() {
   }
 
   // Shield talents raise the ceiling and top it up by the same amount once.
+  // After that the shield only comes back through regeneration (see below), so
+  // raising the ceiling must not be mistaken for a free refill.
   const talentShieldMax = Math.round(health.maxHp * talentStats.shieldMaxPercent);
   playerStats.shieldMax = talentShieldMax;
   if (talentShieldMax > lastTalentShieldMax) {
@@ -1703,6 +1780,27 @@ function gameLoop() {
       playerStats.shield + (talentShieldMax - lastTalentShieldMax)
     );
     lastTalentShieldMax = talentShieldMax;
+  }
+
+  // --- Shield regeneration -------------------------------------------------
+  // A shield that never comes back reads as broken, and a shield that comes
+  // back while the player is being hit is just extra HP. So: stay untouched
+  // for `SHIELD_REGEN_DELAY` seconds and it rebuilds at
+  // `SHIELD_REGEN_PER_SECOND` of its ceiling per second, filling from empty in
+  // about eight. Taking a hit resets the clock, which makes the rule "back off
+  // and it returns" rather than a hidden passive.
+  if (playerStats.shieldMax > 0) {
+    if (playerStats.shield < playerStats.shieldMax) {
+      playerStats.shieldIdle += delta;
+      if (playerStats.shieldIdle >= SHIELD_REGEN_DELAY) {
+        playerStats.shield = Math.min(
+          playerStats.shieldMax,
+          playerStats.shield + playerStats.shieldMax * SHIELD_REGEN_PER_SECOND * delta
+        );
+      }
+    } else {
+      playerStats.shieldIdle = 0;
+    }
   }
 
   // Offer a talent every three minutes. `update` only ticks while no offer is
@@ -2453,11 +2551,17 @@ function hurtHero(raw, options = {}) {
     const absorbed = Math.min(playerStats.shield, damage);
     playerStats.shield -= absorbed;
     damage -= absorbed;
+    // Any shield contact restarts the regeneration clock, even a hit it ate
+    // whole: the point of the delay is "stop being hit", not "lose HP".
+    playerStats.shieldIdle = 0;
   }
 
   if (damage > 0.01) {
     health.takeHit(damage);
     sound.hurt();
+    // Taking real damage counts as being in combat even when the shield was
+    // already empty, otherwise the bar would rebuild mid-fight.
+    playerStats.shieldIdle = 0;
     return damage;
   }
 
@@ -2992,19 +3096,35 @@ window.__hud = {
   grantTalent(key) {
     const talent = TALENTS.find((entry) => entry.key === key);
     if (!talent) return talents.owned.map((entry) => entry.key);
-    const existing = talents.ownedEntry(key);
-    if (existing) {
-      // Levelling an owned talent never costs a slot — same rule as the card.
-      existing.level = Math.min(talentMaxLevel(talent), existing.level + 1);
-    } else if (!talents.full) {
-      talents.owned.push({ ...talent, level: 1 });
+    if (!talents.ownedEntry(key) && !talents.full) {
+      talents.owned.push(talent);
     }
     // A debug hook that can overfill the build would let a bug hide behind it,
     // so the slot ceiling is enforced here too.
     genes.setSlotCount(3 + talents.stats().extraGeneSlot);
     renderGeneBar();
     renderTalentPips();
-    return talents.owned.map((entry) => `${entry.key}:${entry.level}`);
+    return talents.owned.map((entry) => `${entry.key}:${talents.levelOf(entry)}`);
+  },
+
+  /**
+   * Pushes the hero to a level without touching HP. For arranging a test.
+   *
+   * Sets the pool directly rather than growing it: `growMaxHp` ignores
+   * negative amounts, so it could climb the curve but never come back down,
+   * and a test that walks levels needs both directions.
+   *
+   * @param {number} level Target hero level.
+   * @returns {number} The level afterwards.
+   */
+  setHeroLevel(level) {
+    const target = Math.max(1, Math.min(15, Math.round(level)));
+    health.maxHp = target * 100;
+    health.hp = health.maxHp;
+    health.render();
+    talents.syncHeroLevel(health.level);
+    renderTalentPips();
+    return health.level;
   },
 
   /** Re-renders the character panel. For tests that inspect its markup. */
@@ -3029,12 +3149,18 @@ window.__hud = {
   talentEffectAt(key) {
     const entry = talents.ownedEntry(key);
     if (!entry) return null;
+    const level = talents.levelOf(entry);
     return {
-      level: entry.level,
+      level,
       max: talentMaxLevel(entry),
-      effect: talentEffectAt(entry, entry.level),
-      text: formatTalentEffect(talentEffectAt(entry, entry.level)),
+      effect: talentEffectAt(entry, level),
+      text: formatTalentEffect(talentEffectAt(entry, level)),
     };
+  },
+
+  /** Current talent rank for a hero level. For tests and the panel. */
+  talentLevelFor(heroLevel) {
+    return talentLevelFor(heroLevel);
   },
 
   /**
