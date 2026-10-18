@@ -496,10 +496,49 @@ canvas.game {
 }
 
 .pause-controls {
-  margin-top: 6px;
-  font-size: 11px;
-  line-height: 1.6;
-  opacity: 0.7;
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px;
+}
+
+.pause-control {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(47, 107, 42, 0.1);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pause-control kbd {
+  flex: 0 0 84px;
+  text-align: center;
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: rgba(47, 107, 42, 0.12);
+  color: #1b4332;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+
+.pause-control span {
+  color: #33563a;
+}
+
+.pause-foot {
+  margin-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: #5c7a60;
+  opacity: 0.85;
 }
 
 .pause-continue {
@@ -630,28 +669,142 @@ canvas.game {
 
 .char-stats {
   margin-top: 8px;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-
-.char-stat {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 8px 10px;
+  gap: 6px;
+}
+
+/* One stat = a label on the left, the live total on the right, and a row of
+   source chips underneath. Reading the total without the breakdown tells the
+   player nothing about whether their last pick mattered. */
+.char-stat {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'label total'
+    'src src';
+  align-items: center;
+  gap: 2px 10px;
+  padding: 8px 11px;
   border-radius: 10px;
   background: #f3f7f1;
   font-size: 11px;
 }
 
-.char-stat span {
-  opacity: 0.6;
+.char-stat-label {
+  grid-area: label;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  color: #43614a;
 }
 
-.char-stat b {
-  font-size: 14px;
+.char-stat-total {
+  grid-area: total;
+  font-size: 15px;
   font-variant-numeric: tabular-nums;
+  color: #1b4332;
+}
+
+.char-stat-src {
+  grid-area: src;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.char-stat-src .src {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(67, 185, 107, 0.13);
+  color: #3a6b45;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.char-stat-src .src b {
+  color: #1b4332;
+  font-size: 9.5px;
+}
+
+.char-label-note {
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: none;
+  color: #7a9180;
+}
+
+/* --- Talent levels ------------------------------------------------------- */
+.char-talent-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.char-talent-level {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  color: #2f6b2a;
+}
+
+.lvl-pips {
+  display: flex;
+  gap: 3px;
+  margin: 5px 0 4px;
+}
+
+.lvl-pip {
+  width: 14px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(47, 107, 42, 0.16);
+}
+
+.lvl-pip.on {
+  background: #43b96b;
+}
+
+.char-talent-now {
+  font-size: 12px;
+  font-weight: 800;
+  color: #2f6b2a;
+}
+
+/* Offer card: an owned talent is a level-up, so it shows both numbers. */
+.talent-up,
+.talent-new {
+  margin-left: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  vertical-align: middle;
+}
+
+.talent-up {
+  background: rgba(67, 185, 107, 0.2);
+  color: #2f6b2a;
+}
+
+.talent-new {
+  background: rgba(124, 92, 255, 0.16);
+  color: #5b3fd0;
+}
+
+.talent-effect.from {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.talent-effect.to {
+  color: #2f6b2a;
+  font-weight: 800;
 }
 
 .char-genes {

@@ -20,7 +20,15 @@ import { Health, HIT_DAMAGE, HEART_PICKUP, HIT_INVULNERABILITY } from './compone
 import { sound } from './components/Sound.js';
 import { PowerUpManager } from './components/PowerUp.js';
 import { GeneSystem, GENE_TYPES, TIER_LABELS, TIER_COLORS, formatPerLayer, formatCap, LEGENDARY_ORB_SCORE } from './components/Genes.js';
-import { TalentSystem, TALENT_INTERVAL, TALENT_SLOTS, TALENTS } from './components/Talents.js';
+import {
+  TalentSystem,
+  TALENT_INTERVAL,
+  TALENT_SLOTS,
+  TALENTS,
+  talentEffectAt,
+  talentMaxLevel,
+  formatTalentEffect,
+} from './components/Talents.js';
 import {
   Awakening,
   AWAKEN_SCORE_PER_CHARGE,
@@ -330,12 +338,17 @@ function renderTalentPips() {
     if (!talent) {
       pips.push('<span class="talent-pip empty" title="Empty talent slot"></span>');
     } else {
-      pips.push(`<span class="talent-pip filled" title="${talent.name} — ${talent.describe}">${
-        talent.name
-          .split(' ')
-          .map((word) => word[0])
-          .join('')
-      }</span>`);
+      // The pip tooltip carries the live value, so hovering shows what the
+      // talent is worth *now* rather than what it was worth at level 1.
+      const live = formatTalentEffect(talentEffectAt(talent, talent.level));
+      pips.push(
+        `<span class="talent-pip filled" title="${talent.name} Lv.${talent.level} — ${live}">${
+          talent.name
+            .split(' ')
+            .map((word) => word[0])
+            .join('')
+        }<i class="talent-pip-level">${talent.level}</i></span>`
+      );
     }
   }
   const left = Math.max(0, TALENT_INTERVAL - talents.timer);
@@ -526,15 +539,31 @@ function showTalentOffer() {
   talentCard.style.display = 'flex';
 
   const cards = offer
-    .map(
-      (talent, index) =>
+    .map((talent, index) => {
+      // A talent already in the build is a *level-up* card: show what it
+      // reads now and what it becomes, otherwise the player has to remember
+      // the numbers from three minutes ago.
+      const owned = talents.ownedEntry(talent.key);
+      const nextLevel = owned ? owned.level + 1 : 1;
+      const from = owned ? formatTalentEffect(talentEffectAt(talent, owned.level)) : null;
+      const to = formatTalentEffect(talentEffectAt(talent, nextLevel));
+      const badge = owned
+        ? `<span class="talent-up">Lv.${owned.level} → Lv.${nextLevel}</span>`
+        : '<span class="talent-new">New</span>';
+      return (
         '<button class="talent-choice" data-index="' + index + '">' +
         '  <div class="talent-key">' + (index + 1) + '</div>' +
-        '  <div class="talent-name">' + talent.name + '</div>' +
-        '  <div class="talent-effect">' + talent.describe + '</div>' +
+        // The name carries its own data attribute so the badge next to it can
+        // change shape (New vs Lv.2 -> Lv.3) without anyone having to parse it.
+        `  <div class="talent-name" data-name="${talent.name}">${talent.name}${badge}</div>` +
+        (owned
+          ? `  <div class="talent-effect from">was ${from}</div>` +
+            `  <div class="talent-effect to">becomes ${to}</div>`
+          : `  <div class="talent-effect">${to}</div>`) +
         '  <div class="talent-blurb">' + talent.blurb + '</div>' +
         '</button>'
-    )
+      );
+    })
     .join('');
 
   const filled = talents.owned.length;
@@ -600,62 +629,50 @@ pauseMenu.className = 'pause-overlay';
 pauseMenu.style.display = 'none';
 document.body.appendChild(pauseMenu);
 
-/** Fills the pause overlay with the current build and controls. */
+/**
+ * Fills the pause overlay.
+ *
+ * The pause screen is a *reference* screen: it holds the control list and
+ * nothing else. Build details (genes, talents, derived stats) live in the
+ * character panel — showing them in both places made each screen half a
+ * manual and half a stat sheet, and neither was pleasant to read.
+ */
 function renderPauseMenu() {
-  const geneRows = genes.slots.map((slot) => {
-    if (!slot) return '<div class="pause-gene empty">Empty slot</div>';
-    const cfg = GENE_TYPES[slot.key];
-    const color = `#${TIER_COLORS[slot.tier].toString(16).padStart(6, '0')}`;
-    return (
-      '<div class="pause-gene">' +
-      `<span class="gene-dot" style="background:${color}"></span>` +
-      `${cfg.label} · ${TIER_LABELS[slot.tier]} · x${formatStacks(slot.stacks)}` +
-      '</div>'
-    );
-  });
+  const controls = [
+    ['Arrow keys', 'Hop around the board'],
+    ['Space', 'Tongue blast — hold to keep firing'],
+    ['E', 'Awakening — spent from the charge bar'],
+    ['1 / 2 / 3', 'Pick a talent card'],
+    ['Esc', 'Decline the talent offer'],
+    ['F', 'Take the gene on the ground'],
+    ['G / Esc', 'Skip that gene'],
+    ['C', 'Character panel — your live stats'],
+    ['P / Esc', 'Pause and resume'],
+    ['M', 'Mute or unmute sound'],
+  ]
+    .map(
+      ([key, what]) =>
+        '<div class="pause-control">' +
+        `<kbd>${key}</kbd>` +
+        `<span>${what}</span>` +
+        '</div>'
+    )
+    .join('');
 
-  const stats = [
-    `Level ${health.level}`,
-    `HP ${Math.ceil(health.hp)} / ${health.maxHp}`,
-    `ATK ${playerStats.attackPower.toFixed(2)}`,
-    `DEF ${(playerStats.damageReduction * 100).toFixed(1)}%`,
-    `Lifesteal ${(playerStats.lifesteal * 100).toFixed(1)}%`,
-  ].join(' · ');
-
-  const talentRows = talents.owned.length
-    ? talents.owned
-        .map(
-          (talent) =>
-            '<div class="pause-talent">' +
-            `<b>${talent.name}</b> · ${talent.describe}` +
-            '</div>'
-        )
-        .join('')
-    : '<div class="pause-talent empty">No talents yet — one is offered every 3 minutes.</div>';
+  const geneSlots = genes.slots.length;
+  const talentSlots = talents.slotCount;
 
   pauseMenu.innerHTML = [
     '<div class="pause-box">',
     '  <div class="pause-title">Paused</div>',
     '  <div class="pause-sub">Press P or Esc to continue</div>',
     '  <div class="pause-section">',
-    '    <div class="pause-label">Genes</div>',
-    `    <div class="pause-genes">${geneRows.join('')}</div>`,
-    '  </div>',
-    '  <div class="pause-section">',
-    '    <div class="pause-label">Talents</div>',
-    `    <div class="pause-talents">${talentRows}</div>`,
-    '  </div>',
-    '  <div class="pause-section">',
-    '    <div class="pause-label">Stats</div>',
-    `    <div class="pause-stats">${stats}</div>`,
-    '  </div>',
-    '  <div class="pause-section">',
     '    <div class="pause-label">Controls</div>',
-    '    <div class="pause-controls">',
-    '      Arrow keys — hop · Space — tongue blast (hold to keep firing)<br>',
-    '      E — awakening · 1 / 2 / 3 — pick a talent<br>',
-    '      F — take gene · G / Esc — skip gene · C — character panel · P / Esc — pause',
-    '    </div>',
+    `    <div class="pause-controls">${controls}</div>`,
+    '  </div>',
+    '  <div class="pause-foot">',
+    `    <span>${geneSlots} gene slots · ${talentSlots} talent slots</span>`,
+    '    <span>Open the character panel for stats</span>',
     '  </div>',
     '  <button class="pause-continue">Continue</button>',
     '</div>',
@@ -717,7 +734,15 @@ charPanel.className = 'char-overlay';
 charPanel.style.display = 'none';
 document.body.appendChild(charPanel);
 
-/** Fills the character panel with the final computed build. */
+/**
+ * Fills the character panel with the live build.
+ *
+ * This screen owns every number; the pause screen owns every key. Each stat
+ * row carries two values: the total the game actually uses, and a breakdown
+ * of where that total came from. Without the breakdown "ATK 3.42" is a
+ * scoreboard rather than information — the player cannot tell whether the
+ * gene they just took mattered.
+ */
 function renderCharPanel() {
   const geneRows = genes.slots.map((slot) => {
     if (!slot) return '<div class="char-gene empty">Empty slot</div>';
@@ -735,39 +760,139 @@ function renderCharPanel() {
     );
   });
 
+  const geneStats = genes.stats();
+  const talentStats = talents.stats();
+
+  // --- Talents, with the level each one is currently at -------------------
   const talentRows = talents.owned.length
     ? talents.owned
-        .map(
-          (talent) =>
+        .map((entry) => {
+          const max = talentMaxLevel(entry);
+          const live = talentEffectAt(entry, entry.level);
+          const pips = Array.from({ length: max }, (_, i) =>
+            `<i class="lvl-pip${i < entry.level ? ' on' : ''}"></i>`
+          ).join('');
+          const next =
+            entry.level < max
+              ? `Next Lv.${entry.level + 1}: ${formatTalentEffect(talentEffectAt(entry, entry.level + 1))}`
+              : 'Maxed';
+          return (
             '<div class="char-talent">' +
-            `<b>${talent.name}</b> · ${talent.describe}` +
-            `<div class="char-gene-detail">${talent.blurb}</div>` +
+            '<div class="char-talent-head">' +
+            `<b>${entry.name}</b>` +
+            `<span class="char-talent-level">Lv.${entry.level} / ${max}</span>` +
+            '</div>' +
+            `<div class="lvl-pips">${pips}</div>` +
+            // The green line is what the hero has right now — it is read from
+            // the same function the game uses, so it cannot disagree.
+            `<div class="char-talent-now">Now: ${formatTalentEffect(live)}</div>` +
+            `<div class="char-gene-detail">${next}</div>` +
             '</div>'
-        )
+          );
+        })
         .join('')
     : '<div class="char-talent empty">' +
-      `No talents yet — ${talents.slotCount} slots, one offer every 3 minutes.</div>`;
+      `No talents yet — ${talents.slotCount} slots, one offered every 3 minutes.</div>`;
 
   const awakenText = awakening.active
     ? `Active · ${awakening.remaining.toFixed(1)}s left`
     : awakening.ready
-      ? 'Charged · press E'
-      : `${Math.round(awakening.progress * 100)}%`;
+      ? 'Charged — press E'
+      : `${Math.round(awakening.progress * 100)}% charged`;
+
+  // --- Stat rows, each with its sources spelled out -----------------------
+  const levelAttack = (health.level - 1) * 0.05;
+  const levelReduction = Math.min(0.15, (health.level - 1) * 0.01);
+  const levelSpeed = 1 + (health.level - 1) * 0.01;
+
+  const pct = (value) => `${(value * 100).toFixed(1)}%`;
+  const signed = (value, unit = '') => {
+    if (Math.abs(value) < 1e-9) return null;
+    return `${value > 0 ? '+' : ''}${Number(value.toFixed(2))}${unit}`;
+  };
+
+  /** Builds one stat row: label, total, and source chips. */
+  const row = (label, total, sources) => {
+    const chips = sources
+      // A source that contributes nothing is passed as the `null` returned by
+      // `signed()`, or as a tuple whose text is null/empty. Both must vanish:
+      // printing the raw value would surface a literal "null" chip.
+      .map((source) => {
+        if (!source) return null;
+        const [name, text] = source;
+        return text === null || text === undefined || text === '' ? null : [name, text];
+      })
+      .filter(Boolean)
+      .map(([name, text]) => `<span class="src">${name} <b>${text}</b></span>`)
+      .join('');
+    return (
+      '<div class="char-stat">' +
+      `<span class="char-stat-label">${label}</span>` +
+      `<b class="char-stat-total">${total}</b>` +
+      `<div class="char-stat-src">${chips}</div>` +
+      '</div>'
+    );
+  };
 
   const stats = [
-    ['Level', `${health.level} / 15`],
-    ['HP', `${Math.ceil(health.hp)} / ${health.maxHp}`],
-    ['Attack', playerStats.attackPower.toFixed(2)],
-    ['Defense', `${(playerStats.damageReduction * 100).toFixed(1)}%`],
-    ['Lifesteal', `${(playerStats.lifesteal * 100).toFixed(1)}%`],
-    ['Attack range', `${Math.round(playerStats.attackRange)}`],
-    ['Cooldown', `${playerStats.attackCooldown.toFixed(2)}s`],
-    ['Move speed', `${Math.round((playerStats.moveSpeedMult - 1) * 100)}%`],
-    ['Shield', `${Math.round(playerStats.shield)} / ${Math.round(playerStats.shieldMax)}`],
-    ['Awakening', awakenText],
-  ]
-    .map(([label, value]) => `<div class="char-stat"><span>${label}</span><b>${value}</b></div>`)
-    .join('');
+    row('Level', `${health.level} / 15`, [
+      ['Next', health.level < 15 ? `${Math.ceil(health.hp)} / ${health.level * 100} HP` : 'Max'],
+    ]),
+    row('Health', `${Math.ceil(health.hp)} / ${Math.round(health.maxHp)}`, [
+      ['Base', '100'],
+      ['Levels', signed((health.level - 1) * 100)],
+      ['Genes', geneStats.maxHp ? signed(geneStats.maxHp) : null],
+      ['Talents', talentStats.maxHp ? signed(talentStats.maxHp) : null],
+      ['Boss', bossBonus.maxHp ? signed(bossBonus.maxHp) : null],
+    ]),
+    row('Attack power', playerStats.attackPower.toFixed(2), [
+      ['Base', '1.00'],
+      ['Levels', signed(levelAttack)],
+      ['Genes', geneStats.attackPower ? signed(geneStats.attackPower) : null],
+      ['Talents', talentStats.attackPower ? signed(talentStats.attackPower) : null],
+      ['Boss', bossBonus.attack ? signed(bossBonus.attack) : null],
+      playerStats.awakened ? ['Awaken', 'x3'] : null,
+    ]),
+    row('Damage reduction', pct(playerStats.damageReduction), [
+      ['Levels', signed(levelReduction * 100, '%')],
+      ['Genes', geneStats.damageReduction ? signed(geneStats.damageReduction * 100, '%') : null],
+      ['Talents', talentStats.damageReduction ? signed(talentStats.damageReduction * 100, '%') : null],
+      ['Boss', bossBonus.defense ? signed(bossBonus.defense * 100, '%') : null],
+      ['Cap', '80%'],
+    ]),
+    row('Lifesteal', pct(playerStats.lifesteal), [
+      ['Genes', geneStats.lifesteal ? signed(geneStats.lifesteal * 100, '%') : null],
+      ['Talents', talentStats.lifesteal ? signed(talentStats.lifesteal * 100, '%') : null],
+      ['Cap', '35%'],
+    ]),
+    row('Attack range', `${Math.round(playerStats.attackRange)}`, [
+      ['Base', '—'],
+      ['Genes', geneStats.attackRange ? signed(geneStats.attackRange) : null],
+      ['Talents', talentStats.attackRange ? signed(talentStats.attackRange) : null],
+      playerStats.awakened ? ['Awaken', 'x1.6'] : null,
+    ]),
+    row('Attack cooldown', `${playerStats.attackCooldown.toFixed(2)}s`, [
+      ['Genes', geneStats.cooldownMult ? `${signed(geneStats.cooldownMult * 100, '%')}` : null],
+      ['Talents', talentStats.cooldownMult ? signed(talentStats.cooldownMult * 100, '%') : null],
+      ['Floor', `${geneStats.cooldownFloor.toFixed(2)}s`],
+    ]),
+    row('Move speed', `${playerStats.moveSpeedMult >= 1 ? '+' : ''}${Math.round((playerStats.moveSpeedMult - 1) * 100)}%`, [
+      ['Levels', signed((levelSpeed - 1) * 100, '%')],
+      ['Talents', talentStats.moveSpeed ? signed(talentStats.moveSpeed * 100, '%') : null],
+    ]),
+    row('Shield', `${Math.round(playerStats.shield)} / ${Math.round(playerStats.shieldMax)}`, [
+      ['Talents', talentStats.shieldMaxPercent ? signed(talentStats.shieldMaxPercent * 100, '%') : null],
+      ['Kills', 'refills to cap'],
+    ]),
+    row('Gene slots', `${genes.slots.length}`, [
+      ['Base', '3'],
+      ['Lucky', talents.owned.some((t) => t.key === 'lucky') ? '+1' : null],
+    ]),
+    row('Awakening', awakenText, [
+      ['Charge', `${AWAKEN_SCORE_PER_CHARGE} pts`],
+      ['Stored', awakening.ready ? '1' : '0'],
+    ]),
+  ].join('');
 
   charPanel.innerHTML = [
     '<div class="char-box">',
@@ -775,32 +900,21 @@ function renderCharPanel() {
     '    <div class="char-portrait"></div>',
     '    <div class="char-heading">',
     '      <div class="char-name">Tode</div>',
-    `      <div class="char-level">Level ${health.level}</div>`,
+    `      <div class="char-level">Level ${health.level} · ${Math.round(score.value)} pts</div>`,
     '    </div>',
     '    <button class="char-close">Close <kbd>C</kbd></button>',
     '  </div>',
     '  <div class="char-section">',
-    '    <div class="char-label">Vitals</div>',
+    '    <div class="char-label">Stats</div>',
     `    <div class="char-stats">${stats}</div>`,
     '  </div>',
     '  <div class="char-section">',
-    '    <div class="char-label">Genes</div>',
+    `    <div class="char-label">Genes <span class="char-label-note">locked for the run</span></div>`,
     `    <div class="char-genes">${geneRows.join('')}</div>`,
     '  </div>',
     '  <div class="char-section">',
-    '    <div class="char-label">Talents</div>',
+    `    <div class="char-label">Talents <span class="char-label-note">${talents.owned.length} / ${talents.slotCount} slots used</span></div>`,
     `    <div class="char-talents">${talentRows}</div>`,
-    '  </div>',
-    '  <div class="char-section">',
-    '    <div class="char-label">Skills</div>',
-    '    <div class="char-skills">',
-    '      <div><b>Space</b> — tongue blast. Hold to keep firing.</div>',
-    '      <div><b>F / G</b> — take or skip a gene.</div>',
-    '      <div><b>1 / 2 / 3</b> — pick a talent; <b>Esc</b> declines.</div>',
-    `      <div><b>E</b> — awakening (${AWAKEN_SCORE_PER_CHARGE} points per charge, one stored).</div>`,
-    '      <div><b>C</b> — open or close this panel.</div>',
-    '      <div><b>P / Esc</b> — pause.</div>',
-    '    </div>',
     '  </div>',
     '</div>',
   ].join('');
@@ -873,12 +987,14 @@ const damagedBushes = new Set();
 // ---------------------------------------------------------------------------
 // On-screen controls reminder
 // ---------------------------------------------------------------------------
+// The full key list lives on the pause screen; this corner strip only names
+// the two screens a player needs early — the stat sheet and the pause menu.
 const hint = document.createElement('div');
 hint.className = 'hint';
 hint.innerHTML = [
-  '<div><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd> hop around</div>',
   '<div><kbd>Space</kbd> tongue blast</div>',
-  '<div><kbd>M</kbd> mute sound</div>',
+  '<div><kbd>C</kbd> character panel</div>',
+  '<div><kbd>P</kbd> pause</div>',
 ].join('');
 document.body.appendChild(hint);
 
@@ -1299,8 +1415,30 @@ function trimHopToWalls(from, target) {
   return null;
 }
 
-function unstickEnemy(enemy) {
+/**
+ * Slides an insect around an obstacle it could not step through.
+ *
+ * The previous version nudged the insect 4 units away from the nearest trunk
+ * and returned. Two things were wrong with that:
+ *
+ *   1. It always pushed *radially*, which is the one direction a chaser does
+ *      not want — it undoes progress toward the hero.
+ *   2. It had no memory. An insect in a pocket between two trunks was pushed
+ *      out of one and into the other, every frame, forever. That is exactly
+ *      the "stuck monster" the player could farm.
+ *
+ * Now the insect picks a single tangent (clockwise or counter-clockwise,
+ * chosen once and kept) and follows the trunk's surface for it. A committed
+ * direction is what actually gets a body out of a pocket; flipping the choice
+ * every frame is what traps it.
+ *
+ * @param {object} enemy The insect that failed to step.
+ * @param {number} delta Seconds since the previous frame.
+ */
+function unstickEnemy(enemy, delta) {
   const current = enemy.position;
+
+  // Which obstacle are we against? Only trunks are solid, so this is cheap.
   let nearest = null;
   let nearestDistance = Infinity;
   for (const obstacle of enemyObstacles) {
@@ -1313,11 +1451,70 @@ function unstickEnemy(enemy) {
       nearest = obstacle;
     }
   }
-  if (!nearest || nearestDistance < 1e-3) return;
-  const awayX = (current.x - nearest.position.x) / nearestDistance;
-  const awayY = (current.y - nearest.position.y) / nearestDistance;
-  current.x += awayX * 4;
-  current.y += awayY * 4;
+  if (!nearest) return;
+
+  // Pick a side the first time we get stuck, then keep it for a while.
+  // Re-deciding every frame would oscillate between the two tangents.
+  enemy.slideSide = enemy.slideSide || (Math.random() < 0.5 ? 1 : -1);
+  enemy.stuckTimer = (enemy.stuckTimer || 0) + delta;
+
+  const reach = nearest.radius + enemy.radius * 0.7 + WALL_CLEARANCE;
+  const awayX = current.x - nearest.position.x;
+  const awayY = current.y - nearest.position.y;
+  const awayLength = Math.hypot(awayX, awayY) || 1;
+  const normalX = awayX / awayLength;
+  const normalY = awayY / awayLength;
+
+  // Tangent = normal rotated 90 degrees, in the committed direction.
+  const tangentX = -normalY * enemy.slideSide;
+  const tangentY = normalX * enemy.slideSide;
+
+  // Walk along the trunk surface by a step proportional to frame time, so
+  // the slide is smooth instead of a per-frame jolt.
+  const slide = Math.max(1.2, enemy.speed * delta * 0.9);
+
+  // Radial push only matters once the body is inside the radius; while it is
+  // already clear we only add enough to stop it clipping back in.
+  const radialPush = Math.max(0, reach - nearestDistance) + 0.6;
+
+  const nextX = current.x + tangentX * slide + normalX * radialPush;
+  const nextY = current.y + tangentY * slide + normalY * radialPush;
+
+  // If the tangent is blocked too (a second trunk, a wall), try the other
+  // side before giving up for this frame.
+  const probe = new THREE.Vector3(nextX, nextY, 0);
+  if (collidesWithObstacle(probe, enemyObstacles, enemy.radius * 0.7 + WALL_CLEARANCE)) {
+    enemy.slideSide = -enemy.slideSide;
+    const altX = current.x - tangentX * slide + normalX * radialPush;
+    const altY = current.y - tangentY * slide + normalY * radialPush;
+    const alt = new THREE.Vector3(altX, altY, 0);
+    if (!collidesWithObstacle(alt, enemyObstacles, enemy.radius * 0.7 + WALL_CLEARANCE)) {
+      current.x = altX;
+      current.y = altY;
+      return;
+    }
+    // Both tangents blocked: this is a dead end. Hop toward the hero's side
+    // of the trunk, ignoring the obstacle for one frame — being briefly
+    // inside a canopy is far better than parking there for the whole run.
+    current.x += normalX * 3;
+    current.y += normalY * 3;
+    return;
+  }
+
+  current.x = nextX;
+  current.y = nextY;
+
+  // A long slide means the insect is orbiting rather than escaping. Point it
+  // at open ground and let it re-acquire the hero afterwards.
+  if (enemy.stuckTimer > 2.5) {
+    const angle = Math.atan2(normalY, normalX) + Math.PI * 0.5 * enemy.slideSide;
+    enemy.wanderTarget.set(
+      current.x + Math.cos(angle) * 320,
+      current.y + Math.sin(angle) * 320
+    );
+    enemy.wanderTimer = 1.6;
+    enemy.stuckTimer = 0;
+  }
 }
 
 function isPowerUpSpotFree(x, y) {
@@ -2138,7 +2335,12 @@ function gameLoop() {
         break;
       }
     }
-    if (!moved) unstickEnemy(enemy);
+    if (!moved) unstickEnemy(enemy, delta);
+    // A successful step means the insect is out of whatever it was caught on,
+    // so the slide commitment and the stuck clock both reset.
+    else {
+      enemy.stuckTimer = 0;
+    }
 
     clampToBoard(current, enemy.type.radius * 0.5);
   }
@@ -2763,17 +2965,76 @@ window.__hud = {
    * @param {string} key A key into TALENTS.
    * @returns {string[]} The talents owned afterwards.
    */
+  /** Opens the pause overlay. For tests that need its markup. */
+  openPause() {
+    openPauseMenu();
+    return pauseMenuOpen;
+  },
+
+  /** Closes the pause overlay if it is open. */
+  closePause() {
+    if (pauseMenuOpen) closePauseMenu();
+    return pauseMenuOpen;
+  },
+
+  /** Opens the character panel. For tests that need its markup. */
+  openChar() {
+    openCharPanel();
+    return charPanelOpen;
+  },
+
+  /** Closes the character panel if it is open. */
+  closeChar() {
+    if (charPanelOpen) closeCharPanel();
+    return charPanelOpen;
+  },
+
   grantTalent(key) {
     const talent = TALENTS.find((entry) => entry.key === key);
-    // Respect the slot ceiling even when called directly: a debug hook that
-    // can overfill the build would let a bug hide behind it.
-    if (talent && !talents.owned.some((entry) => entry.key === key) && !talents.full) {
-      talents.owned.push(talent);
+    if (!talent) return talents.owned.map((entry) => entry.key);
+    const existing = talents.ownedEntry(key);
+    if (existing) {
+      // Levelling an owned talent never costs a slot — same rule as the card.
+      existing.level = Math.min(talentMaxLevel(talent), existing.level + 1);
+    } else if (!talents.full) {
+      talents.owned.push({ ...talent, level: 1 });
     }
+    // A debug hook that can overfill the build would let a bug hide behind it,
+    // so the slot ceiling is enforced here too.
     genes.setSlotCount(3 + talents.stats().extraGeneSlot);
     renderGeneBar();
     renderTalentPips();
-    return talents.owned.map((entry) => entry.key);
+    return talents.owned.map((entry) => `${entry.key}:${entry.level}`);
+  },
+
+  /** Re-renders the character panel. For tests that inspect its markup. */
+  renderCharPanel,
+
+  /** The live character panel markup. For tests. */
+  get charPanelHtml() {
+    return charPanel.innerHTML;
+  },
+
+  /** The live pause panel markup. For tests. */
+  get pausePanelHtml() {
+    return pauseMenu.innerHTML;
+  },
+
+  /** The controls strip in the bottom-right corner. For tests. */
+  get hintHtml() {
+    return hint.innerHTML;
+  },
+
+  /** Live talent effect for one owned talent, as the panel reports it. */
+  talentEffectAt(key) {
+    const entry = talents.ownedEntry(key);
+    if (!entry) return null;
+    return {
+      level: entry.level,
+      max: talentMaxLevel(entry),
+      effect: talentEffectAt(entry, entry.level),
+      text: formatTalentEffect(talentEffectAt(entry, entry.level)),
+    };
   },
 
   /**

@@ -4,15 +4,26 @@ import { BOARD_HALF, TILE_SIZE } from './Map.js';
 // ---------------------------------------------------------------------------
 // How much of each prop to scatter across the board
 // ---------------------------------------------------------------------------
-const TREE_COUNT = 30;
+// Tree count and spacing are a difficulty knob, not decoration. At 30 trees
+// with a 10-unit gap, the board grew dense thickets where the pathing could
+// not squeeze an insect through — an insect parked against a trunk is free
+// score, and the player quickly learns to farm the corners. Fewer trees with
+// a wider berth keep the board readable and keep every insect reachable.
+const TREE_COUNT = 20;
 const BUSH_COUNT = 25;
 const FLOWER_START_COUNT = 8;
 const FLOWER_MAX_COUNT = 20;
 const FLOWER_GROWTH_SCORE_STEP = 200; // every N points another flower blooms
 const POND_COUNT = 4;
 
-/** Nothing may be placed closer than this to another prop's centre. */
-const MIN_GAP = 10;
+/**
+ * Nothing may be placed closer than this to another prop's centre.
+ *
+ * Raised from 10 to 70: two trees whose collision circles nearly touch form a
+ * wall segment, and a chain of them forms a pocket. The gap has to be wide
+ * enough that an insect body plus its clearance fits through.
+ */
+const MIN_GAP = 70;
 
 /** Seconds before a fruit tree can be struck again. */
 export const FRUIT_COOLDOWN = 20;
