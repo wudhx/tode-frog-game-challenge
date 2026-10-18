@@ -192,6 +192,23 @@ export class GeneSystem {
   }
 
   /**
+   * Resizes the slot array, keeping the genes already locked in.
+   *
+   * Growing adds empty slots at the end. Shrinking is only ever a run reset,
+   * so it drops the tags beyond the new count.
+   *
+   * @param {number} count New slot count.
+   */
+  setSlotCount(count) {
+    const next = Math.max(1, Math.min(5, count));
+    if (next === this.slotCount) return;
+    const previous = this.slots;
+    this.slotCount = next;
+    this.slots = new Array(next).fill(null);
+    for (let i = 0; i < Math.min(next, previous.length); i++) this.slots[i] = previous[i];
+  }
+
+  /**
    * Base drop chance by elapsed run time: generous early, tighter later.
    *
    * @param {number} runTime Seconds since the run started.
@@ -549,11 +566,17 @@ export class GeneSystem {
     return out;
   }
 
-  /** Clears everything for a fresh run. */
-  reset() {
+  /**
+   * Clears everything for a fresh run.
+   *
+   * @param {number} [baseSlotCount] Restores the slot count after a Lucky
+   *   talent granted an extra one.
+   */
+  reset(baseSlotCount) {
     for (const orb of this.orbs) this.removeOrb(orb);
     this.orbs = [];
     this.pending = null;
+    if (typeof baseSlotCount === 'number') this.slotCount = baseSlotCount;
     this.slots = new Array(this.slotCount).fill(null);
     this.killsSinceDrop = 0;
     this.stackKills = 0;

@@ -20,6 +20,7 @@ import { Health, HIT_DAMAGE, HEART_PICKUP, HIT_INVULNERABILITY } from './compone
 import { sound } from './components/Sound.js';
 import { PowerUpManager } from './components/PowerUp.js';
 import { GeneSystem, GENE_TYPES, TIER_LABELS, TIER_COLORS, formatPerLayer, formatCap } from './components/Genes.js';
+import { TalentSystem, TALENT_INTERVAL, TALENT_SLOTS, TALENTS } from './components/Talents.js';
 import { scaledParameters } from './components/Difficulty.js';
 import { hud } from './components/Interactables.js';
 import './style.css';
@@ -214,12 +215,17 @@ const powerUps = new PowerUpManager(scene);
 // Genes
 // ---------------------------------------------------------------------------
 const genes = new GeneSystem(scene, 3);
+const talents = new TalentSystem(TALENT_SLOTS);
 /** Frozen while a gene card or the pause menu is open. */
 let paused = false;
 /** Seconds since the run started, used for the drop-rate curve. */
 let runTime = 0;
 /** Beetle genes raise max HP; track the last applied bonus to grant only the delta. */
 let lastGeneMaxHp = 0;
+/** Same delta rule for the talent max-HP bonus. */
+let lastTalentMaxHp = 0;
+/** Last shield ceiling granted by talents, so refills happen only on gain. */
+let lastTalentShieldMax = 0;
 
 // ---------------------------------------------------------------------------
 // Gene HUD (locked genes) and the pickup card
@@ -265,6 +271,39 @@ const geneCard = document.createElement('div');
 geneCard.className = 'gene-card';
 geneCard.style.display = 'none';
 document.body.appendChild(geneCard);
+
+// ---------------------------------------------------------------------------
+// Talent HUD
+// ---------------------------------------------------------------------------
+const talentBar = document.createElement('div');
+talentBar.className = 'talent-bar';
+document.body.appendChild(talentBar);
+
+/** Rewrites the talent pips and the countdown to the next offer. */
+function renderTalentPips() {
+  const pips = [];
+  for (let i = 0; i < talents.slotCount; i++) {
+    const talent = talents.owned[i];
+    if (!talent) {
+      pips.push('<span class="talent-pip empty" title="Empty talent slot"></span>');
+    } else {
+      pips.push(`<span class="talent-pip filled" title="${talent.name} — ${talent.describe}">${
+        talent.name
+          .split(' ')
+          .map((word) => word[0])
+          .join('')
+      }</span>`);
+    }
+  }
+  const left = Math.max(0, TALENT_INTERVAL - talents.timer);
+  const hint = talents.full
+    ? 'Talent slots full'
+    : `Next talent in ${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
+  talentBar.innerHTML =
+    `<span class="talent-bar-label">Talents</span>${pips.join('')}` +
+    `<span class="talent-bar-hint">${hint}</span>`;
+}
+renderTalentPips();
 
 /** Opens the Take/Skip card for the orb the hero just touched. */
 function showGeneCard() {
@@ -349,6 +388,88 @@ window.addEventListener('keydown', (event) => {
 });
 
 // ---------------------------------------------------------------------------
+// Talent offer (every three minutes)
+// ---------------------------------------------------------------------------
+const talentCard = document.createElement('div');
+talentCard.className = 'talent-card';
+talentCard.style.display = 'none';
+document.body.appendChild(talentCard);
+
+/** Opens the three-talent offer and freezes the run. */
+function showTalentOffer() {
+  const offer = talents.roll();
+  if (!offer || offer.length === 0) return;
+
+  paused = true;
+  attack.enabled = false;
+  player.stop();
+  talentCard.style.display = 'flex';
+
+  const cards = offer
+    .map(
+      (talent, index) =>
+        '<button class="talent-choice" data-index="' + index + '">' +
+        '  <div class="talent-key">' + (index + 1) + '</div>' +
+        '  <div class="talent-name">' + talent.name + '</div>' +
+        '  <div class="talent-effect">' + talent.describe + '</div>' +
+        '  <div class="talent-blurb">' + talent.blurb + '</div>' +
+        '</button>'
+    )
+    .join('');
+
+  const filled = talents.owned.length;
+  talentCard.innerHTML = [
+    '<div class="talent-box">',
+    '  <div class="talent-tier">Talent Awakening</div>',
+    '  <div class="talent-title">Choose one</div>',
+    '  <div class="talent-sub">' +
+      'Talent ' + (filled + 1) + ' of ' + talents.slotCount +
+      ' · locked in for the rest of this run</div>',
+    '  <div class="talent-choices">' + cards + '</div>',
+    '  <button class="talent-skip">Skip this one <kbd>Esc</kbd></button>',
+    '</div>',
+  ].join('');
+
+  for (const button of talentCard.querySelectorAll('.talent-choice')) {
+    button.onclick = () => resolveTalent(Number(button.dataset.index));
+  }
+  talentCard.querySelector('.talent-skip').onclick = () => resolveTalent(-1);
+}
+
+/**
+ * Applies the chosen talent (or declines the offer) and resumes the run.
+ *
+ * @param {number} index Index into the current offer, or -1 to skip.
+ */
+function resolveTalent(index) {
+  const taken = talents.resolve(index);
+  talentCard.style.display = 'none';
+  paused = false;
+  attack.enabled = true;
+  player.stop();
+  clock.getDelta();
+  if (taken) {
+    sound.pickup(1);
+    // Lucky widens the gene bar immediately, not on the next frame.
+    genes.setSlotCount(3 + talents.stats().extraGeneSlot);
+    renderGeneBar();
+  }
+}
+
+// 1/2/3 pick a talent; Esc declines the whole offer.
+window.addEventListener('keydown', (event) => {
+  if (talentCard.style.display === 'none') return;
+  const digit = { Digit1: 0, Digit2: 1, Digit3: 2 }[event.code];
+  if (digit !== undefined) {
+    event.preventDefault();
+    resolveTalent(digit);
+  } else if (event.code === 'Escape' || event.code === 'KeyG') {
+    event.preventDefault();
+    resolveTalent(-1);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Pause menu
 // ---------------------------------------------------------------------------
 let pauseMenuOpen = false;
@@ -381,6 +502,17 @@ function renderPauseMenu() {
     `Lifesteal ${(playerStats.lifesteal * 100).toFixed(1)}%`,
   ].join(' · ');
 
+  const talentRows = talents.owned.length
+    ? talents.owned
+        .map(
+          (talent) =>
+            '<div class="pause-talent">' +
+            `<b>${talent.name}</b> · ${talent.describe}` +
+            '</div>'
+        )
+        .join('')
+    : '<div class="pause-talent empty">No talents yet — one is offered every 3 minutes.</div>';
+
   pauseMenu.innerHTML = [
     '<div class="pause-box">',
     '  <div class="pause-title">Paused</div>',
@@ -388,6 +520,10 @@ function renderPauseMenu() {
     '  <div class="pause-section">',
     '    <div class="pause-label">Genes</div>',
     `    <div class="pause-genes">${geneRows.join('')}</div>`,
+    '  </div>',
+    '  <div class="pause-section">',
+    '    <div class="pause-label">Talents</div>',
+    `    <div class="pause-talents">${talentRows}</div>`,
     '  </div>',
     '  <div class="pause-section">',
     '    <div class="pause-label">Stats</div>',
@@ -410,6 +546,10 @@ function renderPauseMenu() {
 /** Freezes the world and shows the pause overlay. */
 function openPauseMenu() {
   if (gameState !== 'playing') return;
+  // A gene or talent card owns the screen while it is up; the pause menu must
+  // not open on top of it.
+  if (geneCard.style.display !== 'none') return;
+  if (talentCard.style.display !== 'none') return;
   pauseMenuOpen = true;
   paused = true;
   attack.enabled = false;
@@ -428,12 +568,17 @@ function closePauseMenu() {
   pauseMenu.style.display = 'none';
 }
 
-// P / Esc toggles the pause menu. Ignored while the gene card or game-over
-// overlay is up, so those keep their own keys.
+// P / Esc toggles the pause menu. Ignored while the gene or talent card and
+// the game-over overlay are up, so those keep their own keys.
 window.addEventListener('keydown', (event) => {
   if (event.code !== 'KeyP' && event.code !== 'Escape') return;
   if (gameState !== 'playing') return;
+  // A card that handled this very keypress has already marked the event, even
+  // though its container is hidden again by now. Without this check the same
+  // Escape would resolve the card and then immediately open the pause menu.
+  if (event.defaultPrevented) return;
   if (geneCard.style.display !== 'none') return;
+  if (talentCard.style.display !== 'none') return;
   event.preventDefault();
   if (charPanelOpen) {
     closeCharPanel();
@@ -469,6 +614,19 @@ function renderCharPanel() {
     );
   });
 
+  const talentRows = talents.owned.length
+    ? talents.owned
+        .map(
+          (talent) =>
+            '<div class="char-talent">' +
+            `<b>${talent.name}</b> · ${talent.describe}` +
+            `<div class="char-gene-detail">${talent.blurb}</div>` +
+            '</div>'
+        )
+        .join('')
+    : '<div class="char-talent empty">' +
+      `No talents yet — ${talents.slotCount} slots, one offer every 3 minutes.</div>`;
+
   const stats = [
     ['Level', `${health.level} / 15`],
     ['HP', `${Math.ceil(health.hp)} / ${health.maxHp}`],
@@ -503,13 +661,14 @@ function renderCharPanel() {
     '  </div>',
     '  <div class="char-section">',
     '    <div class="char-label">Talents</div>',
-    '    <div class="char-talents">No talents yet — choose one every 3 minutes.</div>',
+    `    <div class="char-talents">${talentRows}</div>`,
     '  </div>',
     '  <div class="char-section">',
     '    <div class="char-label">Skills</div>',
     '    <div class="char-skills">',
     '      <div><b>Space</b> — tongue blast. Hold to keep firing.</div>',
     '      <div><b>F / G</b> — take or skip a gene.</div>',
+    '      <div><b>1 / 2 / 3</b> — pick a talent; <b>Esc</b> declines.</div>',
     '      <div><b>C</b> — open or close this panel.</div>',
     '      <div><b>P / Esc</b> — pause.</div>',
     '    </div>',
@@ -698,12 +857,20 @@ function resetGame() {
   damagedBushes.clear();
 
   // Genes and their HUD reset with the run.
-  genes.reset();
+  genes.reset(3);
   lastGeneMaxHp = 0;
+  // Talents too; the Lucky bonus slot goes away with them.
+  talents.reset();
+  talentCard.style.display = 'none';
+  lastTalentMaxHp = 0;
+  lastTalentShieldMax = 0;
+  playerStats.shield = 0;
+  playerStats.shieldMax = 0;
   runTime = 0;
   paused = false;
   geneCard.style.display = 'none';
   renderGeneBar();
+  renderTalentPips();
 
   if (gameOverOverlay) {
     gameOverOverlay.style.display = 'none';
@@ -1013,30 +1180,38 @@ function gameLoop() {
   playerStats.damageReduction = Math.min(MAX_TOTAL_DAMAGE_REDUCTION, levelReduction);
   const levelSpeed = 1 - (level - 1) * 0.01;
 
-  player.setMoveDuration(params.playerMoveDuration * boosts.hopDuration * levelSpeed);
+  // --- Talent contributions ------------------------------------------------
+  const talentStats = talents.stats();
+  const talentReduction = Math.max(0, talentStats.damageReduction);
+  const talentSpeed = Math.max(-0.5, talentStats.moveSpeed);
+
+  player.setMoveDuration(
+    params.playerMoveDuration * boosts.hopDuration * levelSpeed * (1 - talentSpeed)
+  );
 
   // --- Gene contributions --------------------------------------------------
   const geneStats = genes.stats();
-  playerStats.attackPower = 1 + (level - 1) * 0.05 + geneStats.attackPower;
+  playerStats.attackPower =
+    1 + (level - 1) * 0.05 + geneStats.attackPower + talentStats.attackPower;
   playerStats.damageReduction = Math.min(
     MAX_TOTAL_DAMAGE_REDUCTION,
-    levelReduction + geneStats.damageReduction
+    Math.max(0, levelReduction + geneStats.damageReduction + talentReduction)
   );
-  playerStats.lifesteal = Math.min(0.35, geneStats.lifesteal);
+  playerStats.lifesteal = Math.min(0.35, geneStats.lifesteal + talentStats.lifesteal);
 
   attack.cooldownDuration = Math.max(
     geneStats.cooldownFloor,
-    params.attackCooldown * geneStats.cooldownMult
+    params.attackCooldown * geneStats.cooldownMult * (1 + talentStats.cooldownMult)
   );
   attack.radius = Math.min(
     1600,
-    params.attackRadius * boosts.attackRadius + geneStats.attackRange
+    params.attackRadius * boosts.attackRadius + geneStats.attackRange + talentStats.attackRange
   );
 
   // Mirror the derived values for the character panel.
   playerStats.attackRange = attack.radius;
   playerStats.attackCooldown = attack.cooldownDuration;
-  playerStats.moveSpeedMult = levelSpeed;
+  playerStats.moveSpeedMult = levelSpeed * (1 - talentSpeed);
 
   // Beetle genes raise max HP; grant only the newly gained amount so the
   // pool is not topped up every frame.
@@ -1045,8 +1220,34 @@ function gameLoop() {
     lastGeneMaxHp = geneStats.maxHp;
   }
 
+  // Talent max-HP bonuses follow the same delta rule.
+  if (talentStats.maxHp > lastTalentMaxHp) {
+    health.growMaxHp(talentStats.maxHp - lastTalentMaxHp);
+    lastTalentMaxHp = talentStats.maxHp;
+  }
+
+  // Shield talents raise the ceiling and top it up by the same amount once.
+  const talentShieldMax = Math.round(health.maxHp * talentStats.shieldMaxPercent);
+  playerStats.shieldMax = talentShieldMax;
+  if (talentShieldMax > lastTalentShieldMax) {
+    playerStats.shield = Math.min(
+      talentShieldMax,
+      playerStats.shield + (talentShieldMax - lastTalentShieldMax)
+    );
+    lastTalentShieldMax = talentShieldMax;
+  }
+
+  // Offer a talent every three minutes. `update` only ticks while no offer is
+  // open, so a declined offer returns exactly one interval later.
+  const talentDue = talents.update(delta);
+  if (talentDue) {
+    sound.awaken();
+    showTalentOffer();
+  }
+  renderTalentPips();
+
   // Gene orbs bob; touching one opens the Take/Skip card and freezes the game.
-  if (genes.updateOrbs(delta, player.position)) {
+  if (!talentDue && genes.updateOrbs(delta, player.position)) {
     showGeneCard();
   }
 
@@ -1433,7 +1634,8 @@ function gameLoop() {
       if (destroyed.length > 0) {
         destroyed.forEach((enemy) => {
           enemy.dispose();
-          score.addKillPoints(enemy.type.points);
+          // The Scavenger talent scales every kill reward.
+          score.addKillPoints(Math.round(enemy.type.points * (1 + talentStats.scoreMult)));
           // Every kill nudges the hero's maximum HP, which is what raises
           // his level over a run.
           health.growMaxHp(KILL_MAX_HP_GAIN);
@@ -1746,6 +1948,7 @@ window.__hud = {
   get playerStats() { return playerStats; },
   get attack() { return attack; },
   get genes() { return genes; },
+  get talents() { return talents; },
   get paused() { return paused; },
   get scenery() { return scenery; },
 
@@ -1763,10 +1966,30 @@ window.__hud = {
 
   /** Clears every gene and unpauses. Only for arranging a test. */
   clearGenes() {
-    genes.reset();
+    genes.reset(3);
     geneCard.style.display = 'none';
     paused = false;
     renderGeneBar();
+  },
+
+  /** Forces the next talent offer to appear. Only for arranging a test. */
+  primeTalentOffer() {
+    talents.primeOffer();
+  },
+
+  /**
+   * Applies a talent by key without opening the card. Only for arranging a test.
+   *
+   * @param {string} key A key into TALENTS.
+   * @returns {string[]} The talents owned afterwards.
+   */
+  grantTalent(key) {
+    const talent = TALENTS.find((entry) => entry.key === key);
+    if (talent) talents.owned.push(talent);
+    genes.setSlotCount(3 + talents.stats().extraGeneSlot);
+    renderGeneBar();
+    renderTalentPips();
+    return talents.owned.map((entry) => entry.key);
   },
 
   /**
