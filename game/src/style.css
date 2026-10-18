@@ -1273,7 +1273,7 @@ canvas.game {
 /* --- Proximity + action prompts ------------------------------------------- */
 .interaction-proximity {
   position: fixed;
-  top: 78px;
+  top: 96px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -1302,7 +1302,7 @@ canvas.game {
 
 .interaction-toast {
   position: fixed;
-  top: 120px;
+  top: 140px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { createCamera } from './components/Camera.js';
 import { createRenderer } from './components/Renderer.js';
 import { Player } from './components/Player.js';
-import { Enemy, pickEnemyType, BOSS_SPECIES, BOSS_SUMMON_COUNT } from './components/Enemy.js';
+import { Enemy, pickEnemyType, bossProfile, BOSS_SPECIES, BOSS_SUMMON_COUNT } from './components/Enemy.js';
 import { Map, BOARD_HALF, TILE_SIZE } from './components/Map.js';
 import {
   addHouses,
@@ -19,7 +19,7 @@ import { HighScores } from './components/HighScores.js';
 import { Health, HIT_DAMAGE, HEART_PICKUP, HIT_INVULNERABILITY } from './components/Health.js';
 import { sound } from './components/Sound.js';
 import { PowerUpManager } from './components/PowerUp.js';
-import { GeneSystem, GENE_TYPES, TIER_LABELS, TIER_COLORS, formatPerLayer, formatCap } from './components/Genes.js';
+import { GeneSystem, GENE_TYPES, TIER_LABELS, TIER_COLORS, formatPerLayer, formatCap, LEGENDARY_ORB_SCORE } from './components/Genes.js';
 import { TalentSystem, TALENT_INTERVAL, TALENT_SLOTS, TALENTS } from './components/Talents.js';
 import {
   Awakening,
@@ -68,6 +68,16 @@ const BOSS_BONUS_DEF_MIN = 0.01;
 const BOSS_BONUS_DEF_MAX = 0.04;
 /** How much the bonus range scales up per boss already killed. */
 const BOSS_BONUS_GROWTH = 0.25;
+/**
+ * An active awakening is much less effective against a boss.
+ *
+ * The awakening is a panic button, not a boss-skip button: triple damage on
+ * a boss would delete a 50-hit encounter in a handful of blasts and the
+ * summon/enrage phases would never happen. At 0.6x the boost is still
+ * clearly worth spending — it shaves real time off the fight and the extra
+ * range keeps the hero safe — but the boss survives long enough to be a boss.
+ */
+const BOSS_AWAKEN_DAMAGE_MULT = 0.6;
 
 /**
  * The hero's derived combat stats.
@@ -456,7 +466,19 @@ function showGeneCard() {
  * @param {boolean} take
  */
 function resolveGene(take) {
+  const stacksBefore = genes.slots.reduce((sum, slot) => sum + (slot ? slot.stacks : 0), 0);
   genes.resolve(take);
+  if (take) {
+    const stacksAfter = genes.slots.reduce((sum, slot) => sum + (slot ? slot.stacks : 0), 0);
+    // Late game the orbs only carry stacks. Pay a little score for them so the
+    // awakening bar keeps charging at the same beat it did all run.
+    if (genes.allLegendary && stacksAfter > stacksBefore) {
+      score.addKillPoints(LEGENDARY_ORB_SCORE);
+      if (awakening.addScore(LEGENDARY_ORB_SCORE)) {
+        hud.showAction('Awakening charged — press E', 'awaken', '#7c5cff', 1600);
+      }
+    }
+  }
   geneCard.style.display = 'none';
   paused = false;
   attack.enabled = true;
@@ -1063,7 +1085,13 @@ function spawnBoss() {
   );
   clampToBoard(point, 120);
 
-  const enemy = new Enemy(scene, point, species, false, { boss: true });
+  const enemy = new Enemy(scene, point, species, false, {
+    boss: true,
+    bossIndex: bossesSpawned,
+    // The pool is scaled to the hero's current damage so a late boss survives
+    // long enough to summon and enrage.
+    heroAttack: playerStats.attackPower,
+  });
   enemies.push(enemy);
   boss = enemy;
   bossesSpawned += 1;
@@ -1151,6 +1179,20 @@ function nearestTree(playerPosition, trees) {
 // Gameplay helpers
 // ---------------------------------------------------------------------------
 /**
+ * Contact radius for a given insect.
+ *
+ * Ordinary insects are small enough that the flat 45-unit threshold still
+ * feels fair, but a boss is 4.5x bigger: judging it by the same distance let
+ * the hero stand inside a giant beetle and take no damage at all.
+ *
+ * @param {import('./components/Enemy.js').Enemy} enemy
+ * @returns {number}
+ */
+function contactDistance(enemy) {
+  return enemy.boss ? enemy.radius : PLAYER_HIT_DISTANCE;
+}
+
+/**
  * Returns the closest insect currently touching the hero, or null.
  *
  * Returning the enemy (rather than a boolean) lets the damage step read that
@@ -1160,13 +1202,14 @@ function nearestTree(playerPosition, trees) {
  */
 function enemyTouchingPlayer() {
   let closest = null;
-  let closestDistance = PLAYER_HIT_DISTANCE;
+  let closestDistance = Infinity;
 
   for (const enemy of enemies) {
     const dx = enemy.position.x - player.position.x;
     const dy = enemy.position.y - player.position.y;
     const distance = Math.hypot(dx, dy);
-    if (distance < closestDistance) {
+    const reach = contactDistance(enemy);
+    if (distance < reach && distance < closestDistance) {
       closestDistance = distance;
       closest = enemy;
     }
@@ -1177,7 +1220,7 @@ function enemyTouchingPlayer() {
 
 function canEnemyStep(x, y, self) {
   const probe = new THREE.Vector3(x, y, 0);
-  if (collidesWithObstacle(probe, enemyObstacles, self.type.radius * 0.7 + WALL_CLEARANCE)) {
+  if (collidesWithObstacle(probe, enemyObstacles, self.radius * 0.7 + WALL_CLEARANCE)) {
     return false;
   }
   return !enemies.some((other) => {
@@ -1834,12 +1877,12 @@ function gameLoop() {
     const hit = attack.enemiesInRange(enemies);
     if (hit.length > 0) {
       const destroyed = hit.filter((enemy) => {
+        // Bosses take a tempered share of the awakened attack: huge, but not
+        // enough to erase the encounter in a couple of blasts.
+        const power = enemy.boss ? playerStats.attackPower * BOSS_AWAKEN_DAMAGE_MULT : playerStats.attackPower;
         // Damage actually dealt (armour + remaining HP both matter).
-        const dealt = Math.min(
-          playerStats.attackPower * (1 - enemy.armor),
-          Math.max(0, enemy.hp)
-        );
-        const killed = enemy.takeHit(playerStats.attackPower);
+        const dealt = Math.min(power * (1 - enemy.armor), Math.max(0, enemy.hp));
+        const killed = enemy.takeHit(power);
 
         // Mosquito genes return a share of the damage as HP.
         if (playerStats.lifesteal > 0 && dealt > 0) {
@@ -1947,8 +1990,19 @@ function gameLoop() {
     if (boss.tickBoss(delta)) {
       for (let i = 0; i < BOSS_SUMMON_COUNT; i++) {
         const minion = spawnEnemy(params.enemySpeed);
-        // Minions of a summon come in on the boss, so they join the fight at once.
-        if (minion) minion.group.position.set(boss.group.position.x, boss.group.position.y, 0);
+        if (minion) {
+          // Minions join the fight at once, so they appear on a ring around
+          // the boss rather than all on top of it: spawning them at the exact
+          // centre left them inside the boss's collision bubble, where the
+          // step test refused to let them move.
+          const ring = Math.max(boss.radius + minion.radius + ENEMY_HIT_DISTANCE + 20, 150);
+          const angle = Math.random() * Math.PI * 2;
+          minion.group.position.set(
+            boss.group.position.x + Math.cos(angle) * ring,
+            boss.group.position.y + Math.sin(angle) * ring,
+            0
+          );
+        }
       }
       hud.showAction('The boss calls its brood!', 'boss', '#ff3d6e', 1500);
     }
@@ -2214,6 +2268,8 @@ window.__hud = {
   get bossBonus() { return bossBonus; },
   get nextBossScore() { return nextBossScore; },
   get bossesSpawned() { return bossesSpawned; },
+  /** Pure boss-stat derivation, shared with the constructor. For tests. */
+  bossProfile,
 
   /** Spawns a boss right now. Only for arranging a test. */
   forceBoss(species = 'beetle') {
@@ -2223,7 +2279,11 @@ window.__hud = {
       player.position.y + Math.sin(angle) * 500
     );
     clampToBoard(point, 120);
-    const enemy = new Enemy(scene, point, species, false, { boss: true });
+    const enemy = new Enemy(scene, point, species, false, {
+      boss: true,
+      bossIndex: bossesSpawned,
+      heroAttack: playerStats.attackPower,
+    });
     enemies.push(enemy);
     boss = enemy;
     bossesSpawned += 1;
@@ -2233,10 +2293,22 @@ window.__hud = {
   },
 
   /** Closes the boss bar without killing anything. Only for arranging a test. */
-  clearBoss() {
+  /**
+   * Removes the boss without paying a reward.
+   *
+   * @param {boolean} [rewind] Put the boss counter back, so the next spawn
+   *   is the same number boss again. Tests that compare "first boss" against
+   *   "second boss" need this, otherwise every scenario silently walks the
+   *   difficulty ramp forward.
+   */
+  clearBoss(rewind = false) {
     if (boss) boss.dispose();
     boss = null;
     enemies = enemies.filter((enemy) => !enemy.boss);
+    if (rewind) {
+      bossesSpawned = Math.max(0, bossesSpawned - 1);
+      nextBossScore = Math.max(FIRST_BOSS_SCORE, nextBossScore - BOSS_SCORE_STEP);
+    }
     renderBossBar();
     bossBar.style.display = 'none';
   },
@@ -2287,7 +2359,11 @@ window.__hud = {
    */
   grantTalent(key) {
     const talent = TALENTS.find((entry) => entry.key === key);
-    if (talent) talents.owned.push(talent);
+    // Respect the slot ceiling even when called directly: a debug hook that
+    // can overfill the build would let a bug hide behind it.
+    if (talent && !talents.owned.some((entry) => entry.key === key) && !talents.full) {
+      talents.owned.push(talent);
+    }
     genes.setSlotCount(3 + talents.stats().extraGeneSlot);
     renderGeneBar();
     renderTalentPips();

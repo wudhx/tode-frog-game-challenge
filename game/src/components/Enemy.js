@@ -33,9 +33,89 @@ export const BOSS_SUMMON_COUNT = 2;
 export const BOSS_ENRAGE_THRESHOLD = 0.4;
 /** Speed multiplier once enraged. */
 export const BOSS_ENRAGE_SPEED = 1.35;
+/**
+ * How many hits every boss must absorb.
+ *
+ * Attack power grows without a ceiling (centipede genes, levels, boss
+ * bonuses), so a fixed health pool meant later bosses died to a single
+ * blast and the summon/enrage phases never happened. Each boss's pool is
+ * scaled to survive at least this many hits at the hero's current attack
+ * power, no matter how far the build has run away.
+ */
+export const BOSS_MIN_HITS = 50;
+/**
+ * Extra hits demanded per boss already spawned. The first giant asks for
+ * the `BOSS_MIN_HITS` baseline; every boss after it asks for more, so the
+ * difficulty curve never flattens out even once the hero's attack power has
+ * outgrown the flat multiplier.
+ */
+export const BOSS_MIN_HITS_GROWTH = 15;
+/** Hard ceiling on the hit requirement, so a long run cannot stall forever. */
+export const BOSS_MIN_HITS_MAX = 160;
+/** Extra health multiplier added for each boss already spawned this run. */
+export const BOSS_HP_GROWTH_PER_BOSS = 0.6;
+/** Extra armour added per boss already spawned, on top of the flat bonus. */
+export const BOSS_ARMOR_GROWTH_PER_BOSS = 0.03;
+/** Armour can never make a boss untouchable. */
+export const BOSS_ARMOR_MAX = 0.8;
+/** Contact-damage growth per boss already spawned. */
+export const BOSS_DAMAGE_GROWTH_PER_BOSS = 0.18;
+/** Enrage threshold climbs, so late bosses spend longer in that phase. */
+export const BOSS_ENRAGE_GROWTH_PER_BOSS = 0.05;
+/** Enrage threshold ceiling. */
+export const BOSS_ENRAGE_MAX = 0.7;
 
 /** Species a boss can take the form of. */
 export const BOSS_SPECIES = ['beetle', 'centipede', 'mole'];
+
+/**
+ * Derives every boss stat from a species and a boss number.
+ *
+ * Kept as a pure function so the constructor and the tests share one source
+ * of truth: the whole point of the ramp is that boss #5 is harder than boss
+ * #1 on *every* axis, and that claim has to be checkable without spawning
+ * five giants.
+ *
+ * @param {{hp: number, armor?: number, contactDamage?: number}} type Species blueprint.
+ * @param {number} bossIndex Zero-based boss number within the run.
+ * @param {number} [heroAttack] The hero's attack power when the boss spawns.
+ * @returns {{
+ *   armor: number,
+ *   contactDamage: number,
+ *   maxHp: number,
+ *   hitFloor: number,
+ *   enrageThreshold: number,
+ * }}
+ */
+export function bossProfile(type, bossIndex = 0, heroAttack = 1) {
+  const armor = Math.min(
+    0.95,
+    (type.armor || 0) +
+      Math.min(BOSS_ARMOR_MAX, BOSS_ARMOR_BONUS + bossIndex * BOSS_ARMOR_GROWTH_PER_BOSS)
+  );
+
+  const contactDamage =
+    (type.contactDamage || 20) * BOSS_DAMAGE_MULT * (1 + bossIndex * BOSS_DAMAGE_GROWTH_PER_BOSS);
+
+  // Boss #1 asks for the baseline; every later boss demands more hits.
+  const hitFloor = Math.min(
+    BOSS_MIN_HITS_MAX,
+    BOSS_MIN_HITS + bossIndex * BOSS_MIN_HITS_GROWTH
+  );
+  // Armour already shaves every hit, so the floor is expressed in hits that
+  // land rather than raw swings.
+  const perHit = Math.max(0.5, heroAttack * (1 - armor));
+  const base = type.hp * BOSS_HP_MULT;
+  const growth = 1 + bossIndex * BOSS_HP_GROWTH_PER_BOSS;
+  const maxHp = Math.round(Math.max(base * growth, hitFloor * perHit));
+
+  const enrageThreshold = Math.min(
+    BOSS_ENRAGE_MAX,
+    BOSS_ENRAGE_THRESHOLD + bossIndex * BOSS_ENRAGE_GROWTH_PER_BOSS
+  );
+
+  return { armor, contactDamage, maxHp, hitFloor, enrageThreshold };
+}
 
 // Spawn positions are chosen by main.js: on a board this large, insects have
 // to appear relative to the hero rather than at fixed map corners.
@@ -479,6 +559,8 @@ export class Enemy {
 
     /** Bosses are the same species scaled up and made far tougher. */
     this.boss = options.boss === true;
+    /** Which boss of the run this is (0 for the first). Drives every ramp. */
+    this.bossIndex = this.boss ? options.bossIndex || 0 : 0;
     /** Visual scale applied to the whole body. */
     this.scale = this.boss ? BOSS_SCALE : 1;
 
@@ -487,17 +569,37 @@ export class Enemy {
     /** Current speed in world units per second. */
     this.speed = ENEMY_SPEED * this.speedScale * (this.boss ? BOSS_SPEED_SCALE : 1);
 
-    /** Remaining hit points. */
-    this.baseMaxHp = this.type.hp;
-    this.maxHp = this.boss ? Math.round(this.type.hp * BOSS_HP_MULT) : this.type.hp;
-    this.hp = this.maxHp;
+    /**
+     * Every boss stat that ramps with the boss number comes from one place,
+     * so health, armour, contact damage and the enrage point can never drift
+     * apart from each other.
+     */
+    const profile = this.boss
+      ? bossProfile(this.type, this.bossIndex, options.heroAttack || 1)
+      : null;
 
-    /** Fraction of incoming damage ignored (0–1). */
-    this.armor = Math.min(0.95, (this.type.armor || 0) + (this.boss ? BOSS_ARMOR_BONUS : 0));
+    /**
+     * Fraction of incoming damage ignored (0–1).
+     *
+     * Bosses get the flat bonus plus a small per-boss increment, so a fifth
+     * giant shrugs off noticeably more than the first. Capped well below 1
+     * so a late boss can never become literally untouchable.
+     */
+    this.armor = profile ? profile.armor : this.type.armor || 0;
     /** Damage this species deals on contact. */
-    this.contactDamage = (this.type.contactDamage || 20) * (this.boss ? BOSS_DAMAGE_MULT : 1);
+    this.contactDamage = profile ? profile.contactDamage : this.type.contactDamage || 20;
     /** Points awarded on death. */
     this.points = this.type.points * (this.boss ? BOSS_POINT_MULT : 1);
+    /** Remaining hit points. */
+    this.baseMaxHp = this.type.hp;
+    this.maxHp = profile ? profile.maxHp : this.type.hp;
+    this.hp = this.maxHp;
+
+    /**
+     * Fraction of max HP below which the boss enrages. Later bosses enrage
+     * earlier, so the frantic phase lasts longer each time.
+     */
+    this.enrageThreshold = profile ? profile.enrageThreshold : BOSS_ENRAGE_THRESHOLD;
 
     /** Seconds until the boss may summon another wave (bosses only). */
     this.summonTimer = this.boss ? BOSS_SUMMON_INTERVAL : 0;
@@ -593,6 +695,23 @@ export class Enemy {
   }
 
   /**
+   * Re-rolls this boss's health for a hypothetical attack power.
+   *
+   * Delegates to `bossProfile` so a test can ask "how many hits would this
+   * boss demand from a much stronger hero?" without spawning anything.
+   *
+   * @param {{bossIndex?: number, heroAttack?: number}} options
+   * @returns {number} The boss's max HP, as a whole number of hit points.
+   */
+  bossHealth(options = {}) {
+    return bossProfile(
+      this.type,
+      options.bossIndex !== undefined ? options.bossIndex : this.bossIndex,
+      options.heroAttack || 1
+    ).maxHp;
+  }
+
+  /**
    * Bosses shed a wave of minions on a timer, and go berserk once wounded.
    *
    * @param {number} delta Seconds since the previous frame.
@@ -603,7 +722,7 @@ export class Enemy {
 
     // Enrage once the bar drops below the threshold; the caller reads
     // `enraged` to drive the aura and the speed bump.
-    if (!this.enraged && this.hp <= this.maxHp * BOSS_ENRAGE_THRESHOLD) {
+    if (!this.enraged && this.hp <= this.maxHp * this.enrageThreshold) {
       this.enraged = true;
       this.speed *= BOSS_ENRAGE_SPEED;
       if (this.halo) this.halo.material.emissiveIntensity = 2.6;

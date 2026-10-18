@@ -99,6 +99,13 @@ export const GENE_PITY = 10;
 export const LEGENDARY_DROP_CHANCE = 0.08;
 /** Kills per stack once every slot is legendary. */
 export const LEGENDARY_STACK_KILLS = 30;
+/**
+ * Points a stack-only orb is worth when taken. Once every gene is legendary
+ * the orbs stop carrying score of their own, so without a payout the
+ * awakening bar would quietly stall out in the late game; this keeps it
+ * charging at roughly the same beat.
+ */
+export const LEGENDARY_ORB_SCORE = 40;
 /** Shown on every gene card so stacking is never a mystery. */
 export const STACK_RULE =
   'Three pickups of the same quality upgrade the gene. Upgrading converts your stacks so the total bonus stays the same.';

@@ -12,6 +12,12 @@
 
 /** Points needed to earn one awakening charge. */
 export const AWAKEN_SCORE_PER_CHARGE = 1000;
+/**
+ * A single huge payout (a boss kill) can bank a charge but cannot overflow
+ * the counter: whatever is left after the charge is dropped. Without this a
+ * boss kill would hand back most of a second bar.
+ */
+export const AWAKEN_MAX_PAYOUT_CARRY = AWAKEN_SCORE_PER_CHARGE;
 /** How many charges can be banked at once. */
 export const AWAKEN_MAX_CHARGES = 1;
 /** How long an awakening lasts, in seconds. */

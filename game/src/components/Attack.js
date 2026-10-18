@@ -159,6 +159,10 @@ export class Attack {
   /**
    * Returns the enemies lying inside the current attack radius.
    *
+   * Large insects are measured to their body edge rather than their centre,
+   * so a boss is hittable when the ring touches its shell instead of only
+   * when it reaches the middle of a 4.5x body.
+   *
    * @param {import('./Enemy.js').Enemy[]} enemies Active enemies.
    * @returns {import('./Enemy.js').Enemy[]} Enemies to defeat.
    */
@@ -168,7 +172,8 @@ export class Attack {
     return enemies.filter((enemy) => {
       const dx = enemy.position.x - origin.x;
       const dy = enemy.position.y - origin.y;
-      return Math.sqrt(dx * dx + dy * dy) <= this.radius;
+      const reach = this.radius + (enemy.boss ? enemy.radius : 0);
+      return Math.sqrt(dx * dx + dy * dy) <= reach;
     });
   }
 
