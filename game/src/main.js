@@ -19,7 +19,7 @@ import { HighScores } from './components/HighScores.js';
 import { Health, HIT_DAMAGE, HEART_PICKUP, HIT_INVULNERABILITY } from './components/Health.js';
 import { sound } from './components/Sound.js';
 import { PowerUpManager } from './components/PowerUp.js';
-import { GeneSystem, GENE_TYPES, TIER_LABELS, TIER_COLORS } from './components/Genes.js';
+import { GeneSystem, GENE_TYPES, TIER_LABELS, TIER_COLORS, formatPerLayer, formatCap } from './components/Genes.js';
 import { scaledParameters } from './components/Difficulty.js';
 import { hud } from './components/Interactables.js';
 import './style.css';
@@ -64,6 +64,12 @@ const playerStats = {
   shieldMax: 0,
   /** Fraction of damage dealt returned as HP (0–1). */
   lifesteal: 0,
+  /** Current tongue-blast reach, for the character panel. */
+  attackRange: 0,
+  /** Current tongue-blast cooldown, for the character panel. */
+  attackCooldown: 1,
+  /** Move-speed multiplier from level, for the character panel. */
+  moveSpeedMult: 1,
 };
 
 /**
@@ -194,6 +200,7 @@ const camera = createCamera(player.group);
 
 const score = new Score();
 const health = new Health();
+health.avatarEl.addEventListener('click', () => openCharPanel());
 
 // Shelter durability readout shown while the hero is inside a house.
 const shelterReadout = document.createElement('div');
@@ -296,7 +303,6 @@ function showGeneCard() {
     '<div class="gene-card-box">',
     `  <div class="gene-card-tier" style="color:${tierColor}">${TIER_LABELS[info.tier]}</div>`,
     `  <div class="gene-card-title">${info.label} Gene</div>`,
-    `  <div class="gene-card-desc">${info.description}</div>`,
     `  <div class="gene-card-per">${info.perLayerText}</div>`,
     `  <div class="gene-card-cap">${info.capText}</div>`,
     `  <div class="gene-card-action">${actionText}</div>`,
@@ -346,6 +352,7 @@ window.addEventListener('keydown', (event) => {
 // Pause menu
 // ---------------------------------------------------------------------------
 let pauseMenuOpen = false;
+let charPanelOpen = false;
 
 const pauseMenu = document.createElement('div');
 pauseMenu.className = 'pause-overlay';
@@ -377,7 +384,7 @@ function renderPauseMenu() {
   pauseMenu.innerHTML = [
     '<div class="pause-box">',
     '  <div class="pause-title">Paused</div>',
-    '  <div class="pause-sub">Press P or Esc to resume</div>',
+    '  <div class="pause-sub">Press P or Esc to continue</div>',
     '  <div class="pause-section">',
     '    <div class="pause-label">Genes</div>',
     `    <div class="pause-genes">${geneRows.join('')}</div>`,
@@ -393,11 +400,11 @@ function renderPauseMenu() {
     '      F — take gene · G / Esc — skip gene · C — character panel · P / Esc — pause',
     '    </div>',
     '  </div>',
-    '  <button class="pause-resume">Resume</button>',
+    '  <button class="pause-continue">Continue</button>',
     '</div>',
   ].join('');
 
-  pauseMenu.querySelector('.pause-resume').onclick = () => closePauseMenu();
+  pauseMenu.querySelector('.pause-continue').onclick = () => closePauseMenu();
 }
 
 /** Freezes the world and shows the pause overlay. */
@@ -428,8 +435,121 @@ window.addEventListener('keydown', (event) => {
   if (gameState !== 'playing') return;
   if (geneCard.style.display !== 'none') return;
   event.preventDefault();
+  if (charPanelOpen) {
+    closeCharPanel();
+    return;
+  }
   if (pauseMenuOpen) closePauseMenu();
   else openPauseMenu();
+});
+
+// ---------------------------------------------------------------------------
+// Character panel
+// ---------------------------------------------------------------------------
+const charPanel = document.createElement('div');
+charPanel.className = 'char-overlay';
+charPanel.style.display = 'none';
+document.body.appendChild(charPanel);
+
+/** Fills the character panel with the final computed build. */
+function renderCharPanel() {
+  const geneRows = genes.slots.map((slot) => {
+    if (!slot) return '<div class="char-gene empty">Empty slot</div>';
+    const cfg = GENE_TYPES[slot.key];
+    const color = `#${TIER_COLORS[slot.tier].toString(16).padStart(6, '0')}`;
+    return (
+      '<div class="char-gene">' +
+      `<span class="gene-dot" style="background:${color}"></span>` +
+      `<b>${cfg.label}</b> · ${TIER_LABELS[slot.tier]} · x${formatStacks(slot.stacks)}` +
+      `<div class="char-gene-detail">${formatPerLayer(cfg, slot.tier)} · ${formatCap(
+        cfg,
+        slot.tier
+      )}</div>` +
+      '</div>'
+    );
+  });
+
+  const stats = [
+    ['Level', `${health.level} / 15`],
+    ['HP', `${Math.ceil(health.hp)} / ${health.maxHp}`],
+    ['Attack', playerStats.attackPower.toFixed(2)],
+    ['Defense', `${(playerStats.damageReduction * 100).toFixed(1)}%`],
+    ['Lifesteal', `${(playerStats.lifesteal * 100).toFixed(1)}%`],
+    ['Attack range', `${Math.round(playerStats.attackRange)}`],
+    ['Cooldown', `${playerStats.attackCooldown.toFixed(2)}s`],
+    ['Move speed', `${Math.round((playerStats.moveSpeedMult - 1) * 100)}%`],
+    ['Shield', `${Math.round(playerStats.shield)} / ${Math.round(playerStats.shieldMax)}`],
+  ]
+    .map(([label, value]) => `<div class="char-stat"><span>${label}</span><b>${value}</b></div>`)
+    .join('');
+
+  charPanel.innerHTML = [
+    '<div class="char-box">',
+    '  <div class="char-head">',
+    '    <div class="char-portrait"></div>',
+    '    <div class="char-heading">',
+    '      <div class="char-name">Tode</div>',
+    `      <div class="char-level">Level ${health.level}</div>`,
+    '    </div>',
+    '    <button class="char-close">Close <kbd>C</kbd></button>',
+    '  </div>',
+    '  <div class="char-section">',
+    '    <div class="char-label">Vitals</div>',
+    `    <div class="char-stats">${stats}</div>`,
+    '  </div>',
+    '  <div class="char-section">',
+    '    <div class="char-label">Genes</div>',
+    `    <div class="char-genes">${geneRows.join('')}</div>`,
+    '  </div>',
+    '  <div class="char-section">',
+    '    <div class="char-label">Talents</div>',
+    '    <div class="char-talents">No talents yet — choose one every 3 minutes.</div>',
+    '  </div>',
+    '  <div class="char-section">',
+    '    <div class="char-label">Skills</div>',
+    '    <div class="char-skills">',
+    '      <div><b>Space</b> — tongue blast. Hold to keep firing.</div>',
+    '      <div><b>F / G</b> — take or skip a gene.</div>',
+    '      <div><b>C</b> — open or close this panel.</div>',
+    '      <div><b>P / Esc</b> — pause.</div>',
+    '    </div>',
+    '  </div>',
+    '</div>',
+  ].join('');
+
+  charPanel.querySelector('.char-close').onclick = () => closeCharPanel();
+}
+
+/** Freezes the world and opens the character panel. */
+function openCharPanel() {
+  if (gameState !== 'playing') return;
+  if (geneCard.style.display !== 'none') return;
+  if (pauseMenuOpen) closePauseMenu();
+  charPanelOpen = true;
+  paused = true;
+  attack.enabled = false;
+  player.stop();
+  renderCharPanel();
+  charPanel.style.display = 'flex';
+}
+
+/** Closes the character panel and resumes the run. */
+function closeCharPanel() {
+  charPanelOpen = false;
+  paused = false;
+  attack.enabled = true;
+  player.stop();
+  clock.getDelta();
+  charPanel.style.display = 'none';
+}
+
+window.addEventListener('keydown', (event) => {
+  if (event.code !== 'KeyC') return;
+  if (gameState !== 'playing') return;
+  if (geneCard.style.display !== 'none') return;
+  event.preventDefault();
+  if (charPanelOpen) closeCharPanel();
+  else openCharPanel();
 });
 
 // ---------------------------------------------------------------------------
@@ -861,7 +981,7 @@ const clock = new THREE.Clock();
 const _dir = new THREE.Vector2();
 const _target = new THREE.Vector2();
 
-renderer.setAnimationLoop(() => {
+function gameLoop() {
   const delta = Math.min(clock.getDelta(), 0.1);
 
   if (gameState === 'game-over') {
@@ -912,6 +1032,11 @@ renderer.setAnimationLoop(() => {
     1600,
     params.attackRadius * boosts.attackRadius + geneStats.attackRange
   );
+
+  // Mirror the derived values for the character panel.
+  playerStats.attackRange = attack.radius;
+  playerStats.attackCooldown = attack.cooldownDuration;
+  playerStats.moveSpeedMult = levelSpeed;
 
   // Beetle genes raise max HP; grant only the newly gained amount so the
   // pool is not topped up every frame.
@@ -1319,7 +1444,7 @@ renderer.setAnimationLoop(() => {
           const grown = genes.grantStackOnKill(enemy.elite);
           if (grown) {
             hud.showAction(
-              `${GENE_TYPES[grown.key].label} gene +1 stack`,
+              `${GENE_TYPES[grown.key].label} gene: +1 stack`,
               'gene',
               '#ffc83d',
               1200
@@ -1583,9 +1708,21 @@ renderer.setAnimationLoop(() => {
   clampToBoard(player.group.position, player.radius);
 
   renderer.render(scene, camera);
-});
+}
 
 spawnEnemy();
+
+// Hold the run behind a loading screen until the real frog model is ready.
+// This avoids the old "procedural frog, then sudden swap" pop at the start.
+const loadingScreen = document.createElement('div');
+loadingScreen.className = 'loading-screen';
+loadingScreen.textContent = 'Loading…';
+document.body.appendChild(loadingScreen);
+
+player.ready.then(() => {
+  loadingScreen.remove();
+  renderer.setAnimationLoop(gameLoop);
+});
 
 // ---------------------------------------------------------------------------
 // Debug hook for automated testing. Exposes the live world state so a headless

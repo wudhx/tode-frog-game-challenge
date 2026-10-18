@@ -53,6 +53,7 @@ export class Health {
     this.element.className = 'health';
     this.element.innerHTML = [
       '<div class="hp-head">',
+      '  <span class="hp-avatar" title="Character panel (C)"></span>',
       '  <span class="hp-name">HP</span>',
       '  <span class="hp-level">Lv.1</span>',
       '  <span class="hp-value">100 / 100</span>',
@@ -61,6 +62,7 @@ export class Health {
       '<div class="hp-buffs"></div>',
     ].join('');
 
+    this.avatarEl = this.element.querySelector('.hp-avatar');
     this.valueEl = this.element.querySelector('.hp-value');
     this.levelEl = this.element.querySelector('.hp-level');
     this.fillEl = this.element.querySelector('.hp-fill');

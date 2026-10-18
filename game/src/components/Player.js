@@ -111,6 +111,10 @@ export class Player {
     // Reference to the raw loaded model (rotated/offset independently).
     this.model = null;
 
+    // Which model is in use: 'glb' for the detailed frog, 'procedural' only
+    // when the GLB fails to load.
+    this.modelSource = null;
+
     // Populated once the model finishes loading.
     this.loaded = false;
 
@@ -157,56 +161,59 @@ export class Player {
   }
 
   /**
-   * Builds the hero model.
+   * Loads the detailed frog before the run starts.
    *
-   * Starts with a procedural frog so the hero is visible immediately and can
-   * never be invisible, then swaps in the detailed GLB model once it arrives.
-   * If the GLB fails to download (it is a large file, and the request is
-   * sometimes dropped), the procedural frog simply stays.
+   * The old flow showed a procedural placeholder first and swapped in the GLB
+   * a moment later, which made the hero visibly change shape at the start of
+   * every run. Now the game waits behind a loading screen until the real model
+   * is ready; the procedural frog is only used if the GLB actually fails.
    */
   load() {
-    // Placeholder frog, visible from the first frame.
-    const placeholder = buildFrog();
-    this.model = placeholder;
-    this.yaw.add(placeholder);
-    this.loaded = true;
+    this.ready = new Promise((resolve) => {
+      const loader = new GLTFLoader();
+      loader.load(
+        `${import.meta.env.BASE_URL}models/tode.glb`,
+        (gltf) => {
+          const model = gltf.scene;
 
-    const box = new THREE.Box3().setFromObject(placeholder);
-    this.radius = Math.max(box.max.x - box.min.x, box.max.y - box.min.y) / 2;
+          // The asset is authored "lying down" for a Y-up world; rotate it
+          // into our Z-up coordinate system so the frog stands upright.
+          model.rotation.x = Math.PI / 2;
 
-    // Upgrade to the detailed model when it loads.
-    const loader = new GLTFLoader();
-    loader.load(
-      `${import.meta.env.BASE_URL}models/tode.glb`,
-      (gltf) => {
-        const model = gltf.scene;
+          // Scale the frog to a sensible size for the map.
+          model.scale.setScalar(20);
 
-        // The asset is authored "lying down" for a Y-up world; rotate it into
-        // our Z-up coordinate system so the frog stands upright.
-        model.rotation.x = Math.PI / 2;
+          // Sit the model exactly on the ground plane (Z = 0) by measuring
+          // how far the geometry extends below its own origin.
+          model.updateMatrixWorld(true);
+          const glbBox = new THREE.Box3().setFromObject(model);
+          model.position.z -= glbBox.min.z;
 
-        // Scale the frog to a sensible size for the map.
-        model.scale.setScalar(20);
+          // Half of the widest horizontal extent is the frog's footprint.
+          this.radius =
+            Math.max(glbBox.max.x - glbBox.min.x, glbBox.max.y - glbBox.min.y) / 2;
 
-        // Sit the model exactly on the ground plane (Z = 0) by measuring how
-        // far the geometry extends below its own origin after rotation.
-        model.updateMatrixWorld(true);
-        const glbBox = new THREE.Box3().setFromObject(model);
-        model.position.z -= glbBox.min.z;
-
-        // Half of the widest horizontal extent is the frog's footprint radius.
-        this.radius = Math.max(glbBox.max.x - glbBox.min.x, glbBox.max.y - glbBox.min.y) / 2;
-
-        // Swap out the placeholder.
-        this.yaw.remove(placeholder);
-        this.model = model;
-        this.yaw.add(model);
-      },
-      undefined,
-      () => {
-        // Download failed — keep the procedural frog. Better than no hero.
-      }
-    );
+          this.model = model;
+          this.modelSource = 'glb';
+          this.yaw.add(model);
+          this.loaded = true;
+          resolve();
+        },
+        undefined,
+        () => {
+          // The detailed model failed to download. Fall back to the
+          // procedural frog so the hero is never missing.
+          const placeholder = buildFrog();
+          const box = new THREE.Box3().setFromObject(placeholder);
+          this.radius = Math.max(box.max.x - box.min.x, box.max.y - box.min.y) / 2;
+          this.model = placeholder;
+          this.modelSource = 'procedural';
+          this.yaw.add(placeholder);
+          this.loaded = true;
+          resolve();
+        }
+      );
+    });
   }
 
   /**

@@ -101,7 +101,7 @@ export const LEGENDARY_DROP_CHANCE = 0.08;
 export const LEGENDARY_STACK_KILLS = 30;
 /** Shown on every gene card so stacking is never a mystery. */
 export const STACK_RULE =
-  '3 same-quality pickups upgrade the quality. Upgrading converts existing stacks by the per-stack ratio.';
+  'Three pickups of the same quality upgrade the gene. Upgrading converts your stacks so the total bonus stays the same.';
 
 /**
  * Formats the per-stack gain for the pickup card.
@@ -110,23 +110,23 @@ export const STACK_RULE =
  * @param {'common'|'rare'|'legendary'} tier
  * @returns {string}
  */
-function formatPerLayer(cfg, tier) {
+export function formatPerLayer(cfg, tier) {
   const per = cfg.perLayer[tier];
   switch (cfg.stat) {
     case 'attackCooldown':
-      return `-${(per * 100).toFixed(1)}% attack cooldown per stack`;
+      return `Each stack: -${(per * 100).toFixed(1)}% attack cooldown`;
     case 'lifesteal':
-      return `+${(per * 100).toFixed(1)}% lifesteal per stack`;
+      return `Each stack: +${(per * 100).toFixed(1)}% lifesteal`;
     case 'damageReduction':
-      return `-${(per * 100).toFixed(1)}% damage taken per stack`;
+      return `Each stack: -${(per * 100).toFixed(1)}% damage taken`;
     case 'attackRange':
-      return `+${per} attack range per stack`;
+      return `Each stack: +${per} attack range`;
     case 'maxHp':
-      return `+${per} max HP per stack`;
+      return `Each stack: +${per} max HP`;
     case 'attackPower':
-      return `+${per} attack power per stack`;
+      return `Each stack: +${per} attack power`;
     default:
-      return `+${per} per stack`;
+      return `Each stack: +${per}`;
   }
 }
 
@@ -137,16 +137,16 @@ function formatPerLayer(cfg, tier) {
  * @param {'common'|'rare'|'legendary'} tier
  * @returns {string}
  */
-function formatCap(cfg, tier) {
+export function formatCap(cfg, tier) {
   if (cfg.stat === 'attackCooldown') {
-    return `Min cooldown ${cfg.floor[tier]}s`;
+    return `Minimum cooldown: ${cfg.floor[tier]}s`;
   }
   if (!cfg.cap) return 'No cap';
   const cap = cfg.cap[tier];
   if (cfg.stat === 'lifesteal' || cfg.stat === 'damageReduction') {
-    return `Cap ${Math.round(cap * 100)}%`;
+    return `Cap: ${Math.round(cap * 100)}%`;
   }
-  return `Cap ${cap}`;
+  return `Cap: ${cap}`;
 }
 
 /**
