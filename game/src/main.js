@@ -16,7 +16,7 @@ import { Scenery, BUSH_COOLDOWN } from './components/Scenery.js';
 import { Attack } from './components/Attack.js';
 import { Score } from './components/Score.js';
 import { HighScores } from './components/HighScores.js';
-import { Health, HIT_DAMAGE, HEART_PICKUP } from './components/Health.js';
+import { Health, HIT_DAMAGE, HEART_PICKUP, HIT_INVULNERABILITY } from './components/Health.js';
 import { sound } from './components/Sound.js';
 import { PowerUpManager } from './components/PowerUp.js';
 import { scaledParameters } from './components/Difficulty.js';
@@ -30,6 +30,25 @@ import './style.css';
 const PLAYER_HIT_DISTANCE = 45;
 /** Enemy vs. enemy: how close two insects may get. */
 const ENEMY_HIT_DISTANCE = 45;
+
+/**
+ * The hero's derived combat stats.
+ *
+ * Phase 1 wires the damage pipeline (attack power, damage reduction, shield).
+ * Later phases feed level, genes, talents and awakening into these numbers.
+ */
+const playerStats = {
+  /** Damage per tongue blast, in "hit units". */
+  attackPower: 1,
+  /** Fraction of incoming contact damage ignored (0–1). */
+  damageReduction: 0,
+  /** Shield points, absorbed before HP. */
+  shield: 0,
+  /** Shield ceiling, set by talents/gear. */
+  shieldMax: 0,
+  /** Fraction of damage dealt returned as HP (0–1). */
+  lifesteal: 0,
+};
 
 /**
  * Breathing room between a body and a wall. Kept small so the hero stops
@@ -394,12 +413,29 @@ function nearestTree(playerPosition, trees) {
 // ---------------------------------------------------------------------------
 // Gameplay helpers
 // ---------------------------------------------------------------------------
-function playerHitsEnemy() {
-  return enemies.some((enemy) => {
+/**
+ * Returns the closest insect currently touching the hero, or null.
+ *
+ * Returning the enemy (rather than a boolean) lets the damage step read that
+ * species' contact damage — a centipede bites for 30, a fly for 20.
+ *
+ * @returns {import('./components/Enemy.js').Enemy|null}
+ */
+function enemyTouchingPlayer() {
+  let closest = null;
+  let closestDistance = PLAYER_HIT_DISTANCE;
+
+  for (const enemy of enemies) {
     const dx = enemy.position.x - player.position.x;
     const dy = enemy.position.y - player.position.y;
-    return Math.sqrt(dx * dx + dy * dy) < PLAYER_HIT_DISTANCE;
-  });
+    const distance = Math.hypot(dx, dy);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closest = enemy;
+    }
+  }
+
+  return closest;
 }
 
 function canEnemyStep(x, y, self) {
@@ -952,7 +988,7 @@ renderer.setAnimationLoop(() => {
   if (attackActive && !attackWasActive) {
     const hit = attack.enemiesInRange(enemies);
     if (hit.length > 0) {
-      const destroyed = hit.filter((enemy) => enemy.takeHit());
+      const destroyed = hit.filter((enemy) => enemy.takeHit(playerStats.attackPower));
 
       if (destroyed.length > 0) {
         destroyed.forEach((enemy) => {
@@ -1167,11 +1203,32 @@ renderer.setAnimationLoop(() => {
     inHouse ||
     bushState.active;
 
-  if (!safe && playerHitsEnemy()) {
+  // --- Contact damage ------------------------------------------------------
+  const attacker = safe ? null : enemyTouchingPlayer();
+  if (attacker && health.invulnerable <= 0) {
+    let damage = attacker.contactDamage || HIT_DAMAGE;
+
     // The pond soaks a fifth of the damage while the hero is standing in it.
-    const damage = inWater ? HIT_DAMAGE * (1 - POND_DAMAGE_SOAK) : HIT_DAMAGE;
-    health.takeHit(damage);
-    sound.hurt();
+    if (inWater) damage *= 1 - POND_DAMAGE_SOAK;
+
+    // Level, genes and talents can reduce incoming damage.
+    damage *= 1 - playerStats.damageReduction;
+
+    // A shield absorbs damage before HP is touched.
+    if (playerStats.shield > 0) {
+      const absorbed = Math.min(playerStats.shield, damage);
+      playerStats.shield -= absorbed;
+      damage -= absorbed;
+    }
+
+    if (damage > 0.01) {
+      health.takeHit(damage);
+      sound.hurt();
+    } else {
+      // The shield ate the whole hit. Start the mercy window anyway so a
+      // shield is not drained once per frame.
+      health.invulnerable = HIT_INVULNERABILITY;
+    }
   }
 
   if (player.model) {
@@ -1217,7 +1274,22 @@ window.__hud = {
   get scene() { return scene; },
   get score() { return score; },
   get health() { return health; },
+  get playerStats() { return playerStats; },
   get scenery() { return scenery; },
+
+  /**
+   * Spawns a specific insect at a point. Only for arranging a test.
+   *
+   * @param {string} typeKey A key into ENEMY_TYPES.
+   * @param {number} x World X.
+   * @param {number} y World Y.
+   * @returns {import('./components/Enemy.js').Enemy}
+   */
+  spawnEnemy(typeKey, x, y) {
+    const enemy = new Enemy(scene, new THREE.Vector2(x, y), typeKey);
+    enemies.push(enemy);
+    return enemy;
+  },
   get player() { return player; },
   get obstacles() { return obstacles; },
   get houseAttackRange() { return HOUSE_ATTACK_RANGE; },

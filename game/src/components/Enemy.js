@@ -270,6 +270,112 @@ function buildBeetle(cfg) {
   return group;
 }
 
+/** Centipede: a chain of armoured segments with many legs — bites hard. */
+function buildCentipede(cfg) {
+  const group = new THREE.Group();
+  const shell = new THREE.MeshStandardMaterial({ color: 0x8a3b1f, roughness: 0.55, metalness: 0.2 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x5c2412, roughness: 0.7 });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffd23f, roughness: 0.3 });
+
+  const segments = 6;
+  for (let i = 0; i < segments; i++) {
+    const t = i / (segments - 1);
+    const r = cfg.radius * (0.62 - t * 0.32);
+    const seg = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), shell);
+    seg.scale.set(1.15, 1, 0.9);
+    seg.position.x = cfg.radius * (0.75 - t * 1.6);
+    group.add(seg);
+
+    // A pair of legs per segment, splayed sideways.
+    for (const side of [-1, 1]) {
+      const leg = new THREE.Mesh(
+        new THREE.CylinderGeometry(r * 0.09, r * 0.06, r * 0.9, 5),
+        dark
+      );
+      leg.rotation.z = side * 0.9;
+      leg.position.set(seg.position.x, side * r * 0.75, -r * 0.2);
+      group.add(leg);
+    }
+  }
+
+  // Head with antennae and bright eyes.
+  const head = new THREE.Mesh(new THREE.SphereGeometry(cfg.radius * 0.5, 12, 10), dark);
+  head.position.x = cfg.radius * 0.85;
+  group.add(head);
+
+  for (const side of [-1, 1]) {
+    const antenna = new THREE.Mesh(
+      new THREE.CylinderGeometry(cfg.radius * 0.05, cfg.radius * 0.03, cfg.radius * 0.8, 5),
+      dark
+    );
+    antenna.rotation.z = -Math.PI / 2;
+    antenna.rotation.x = side * 0.4;
+    antenna.position.set(cfg.radius * 1.1, side * cfg.radius * 0.2, cfg.radius * 0.1);
+    group.add(antenna);
+
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(cfg.radius * 0.12, 8, 6), eyeMat);
+    eye.position.set(cfg.radius * 0.95, side * cfg.radius * 0.18, cfg.radius * 0.15);
+    group.add(eye);
+  }
+
+  return group;
+}
+
+/** Mole: a heavy, armoured burrower with oversized claws — slow but tough. */
+function buildMole(cfg) {
+  const group = new THREE.Group();
+  const fur = new THREE.MeshStandardMaterial({ color: 0x6b4a33, roughness: 0.85 });
+  const darkFur = new THREE.MeshStandardMaterial({ color: 0x4a3020, roughness: 0.9 });
+  const clawMat = new THREE.MeshStandardMaterial({ color: 0xd9cbb5, roughness: 0.5 });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x14110f, roughness: 0.3 });
+
+  // Big rounded body.
+  const body = new THREE.Mesh(new THREE.SphereGeometry(cfg.radius * 0.85, 16, 14), fur);
+  body.scale.set(1.25, 1, 0.85);
+  group.add(body);
+
+  // Snout and nose at the front.
+  const snout = new THREE.Mesh(new THREE.SphereGeometry(cfg.radius * 0.42, 14, 10), darkFur);
+  snout.scale.set(1.4, 1, 0.9);
+  snout.position.set(cfg.radius * 0.9, 0, -cfg.radius * 0.05);
+  group.add(snout);
+
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(cfg.radius * 0.14, 8, 6), clawMat);
+  nose.position.set(cfg.radius * 1.3, 0, cfg.radius * 0.05);
+  group.add(nose);
+
+  // Oversized claw arms.
+  for (const side of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.SphereGeometry(cfg.radius * 0.32, 10, 8), darkFur);
+    arm.scale.set(1.3, 0.8, 0.8);
+    arm.position.set(cfg.radius * 0.5, side * cfg.radius * 0.8, -cfg.radius * 0.1);
+    group.add(arm);
+
+    for (let c = 0; c < 3; c++) {
+      const claw = new THREE.Mesh(
+        new THREE.ConeGeometry(cfg.radius * 0.07, cfg.radius * 0.35, 5),
+        clawMat
+      );
+      claw.rotation.z = -Math.PI / 2;
+      claw.position.set(
+        cfg.radius * 0.85,
+        side * (cfg.radius * 0.8 + (c - 1) * cfg.radius * 0.13),
+        -cfg.radius * 0.1
+      );
+      group.add(claw);
+    }
+  }
+
+  // Tiny eyes.
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(cfg.radius * 0.08, 8, 6), eyeMat);
+    eye.position.set(cfg.radius * 0.85, side * cfg.radius * 0.22, cfg.radius * 0.22);
+    group.add(eye);
+  }
+
+  return group;
+}
+
 // ---------------------------------------------------------------------------
 // Type table
 // ---------------------------------------------------------------------------
@@ -278,10 +384,12 @@ function buildBeetle(cfg) {
  * speed; `hp` is how many attacks it survives; `points` is the kill reward.
  */
 export const ENEMY_TYPES = {
-  fly: { key: 'fly', label: 'Fly', radius: 22, hp: 1, points: 10, speedScale: 1.0, build: buildFly },
-  mosquito: { key: 'mosquito', label: 'Mosquito', radius: 15, hp: 1, points: 15, speedScale: 1.65, build: buildMosquito },
-  bee: { key: 'bee', label: 'Bee', radius: 20, hp: 1, points: 25, speedScale: 1.15, build: buildBee },
-  beetle: { key: 'beetle', label: 'Beetle', radius: 30, hp: 2, points: 40, speedScale: 0.7, build: buildBeetle },
+  fly: { key: 'fly', label: 'Fly', radius: 22, hp: 1, points: 10, speedScale: 1.0, contactDamage: 20, armor: 0, build: buildFly },
+  mosquito: { key: 'mosquito', label: 'Mosquito', radius: 15, hp: 1, points: 15, speedScale: 1.65, contactDamage: 20, armor: 0, build: buildMosquito },
+  bee: { key: 'bee', label: 'Bee', radius: 20, hp: 1, points: 25, speedScale: 1.15, contactDamage: 20, armor: 0, build: buildBee },
+  beetle: { key: 'beetle', label: 'Beetle', radius: 30, hp: 2, points: 40, speedScale: 0.7, contactDamage: 20, armor: 0, build: buildBeetle },
+  centipede: { key: 'centipede', label: 'Centipede', radius: 26, hp: 2, points: 35, speedScale: 0.85, contactDamage: 30, armor: 0, build: buildCentipede },
+  mole: { key: 'mole', label: 'Mole', radius: 32, hp: 4, points: 45, speedScale: 0.6, contactDamage: 20, armor: 0.5, build: buildMole },
 };
 
 /**
@@ -298,6 +406,8 @@ export function pickEnemyType(score) {
   if (score >= 35) pool.push('mosquito', 'bee');
   if (score >= 60) pool.push('bee', 'beetle');
   if (score >= 100) pool.push('beetle', 'mosquito');
+  if (score >= 150) pool.push('centipede', 'mole');
+  if (score >= 250) pool.push('centipede', 'mole', 'beetle');
 
   return pool[Math.floor(Math.random() * pool.length)];
 }
@@ -348,6 +458,11 @@ export class Enemy {
     this.maxHp = this.type.hp;
     this.hp = this.maxHp;
 
+    /** Fraction of incoming damage ignored (0–1). */
+    this.armor = this.type.armor || 0;
+    /** Damage this species deals on contact. */
+    this.contactDamage = this.type.contactDamage || 20;
+
     // World-space holder on the ground plane; the body is lifted to hover.
     this.group = new THREE.Group();
     this.group.position.set(spawnPoint.x, spawnPoint.y, 0);
@@ -397,12 +512,14 @@ export class Enemy {
   }
 
   /**
-   * Applies one hit.
+   * Applies one hit, reduced by this species' armour.
    *
+   * @param {number} [damage] Damage in "hit units". Armour reduces it.
    * @returns {boolean} True if the insect was destroyed, false if it survived.
    */
-  takeHit() {
-    this.hp -= 1;
+  takeHit(damage = 1) {
+    const effective = damage * (1 - this.armor);
+    this.hp -= effective;
     if (this.hp > 0) {
       this.hitFlash = 0.25;
       return false;
