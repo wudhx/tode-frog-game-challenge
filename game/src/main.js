@@ -31,6 +31,9 @@ const PLAYER_HIT_DISTANCE = 45;
 /** Enemy vs. enemy: how close two insects may get. */
 const ENEMY_HIT_DISTANCE = 45;
 
+/** Maximum HP gained per kill — this is what drives the level curve. */
+const KILL_MAX_HP_GAIN = 3;
+
 /**
  * The hero's derived combat stats.
  *
@@ -620,7 +623,15 @@ renderer.setAnimationLoop(() => {
   const params = scaledParameters(score.value);
   const boosts = powerUps.multipliers;
 
-  player.setMoveDuration(params.playerMoveDuration * boosts.hopDuration);
+  // --- Level-driven bonuses ------------------------------------------------
+  // 100 HP = level 1, +100 per level, capped at 15. Each level adds attack,
+  // damage reduction and a little move speed.
+  const level = health.level;
+  playerStats.attackPower = 1 + (level - 1) * 0.05;
+  playerStats.damageReduction = (level - 1) * 0.02;
+  const levelSpeed = 1 - (level - 1) * 0.01;
+
+  player.setMoveDuration(params.playerMoveDuration * boosts.hopDuration * levelSpeed);
   attack.cooldownDuration = params.attackCooldown;
   attack.radius = params.attackRadius * boosts.attackRadius;
 
@@ -994,6 +1005,9 @@ renderer.setAnimationLoop(() => {
         destroyed.forEach((enemy) => {
           enemy.dispose();
           score.addKillPoints(enemy.type.points);
+          // Every kill nudges the hero's maximum HP, which is what raises
+          // his level over a run.
+          health.growMaxHp(KILL_MAX_HP_GAIN);
         });
         enemies = enemies.filter((enemy) => !destroyed.includes(enemy));
         sound.kill();

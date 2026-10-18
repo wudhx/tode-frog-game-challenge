@@ -58,7 +58,7 @@ canvas.game {
 .hp-head {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
+  gap: 8px;
   margin-bottom: 6px;
 }
 
@@ -70,7 +70,18 @@ canvas.game {
   opacity: 0.5;
 }
 
+.hp-level {
+  font-size: 11px;
+  font-weight: 800;
+  color: #2f6b2a;
+  background: rgba(67, 185, 107, 0.16);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-variant-numeric: tabular-nums;
+}
+
 .hp-value {
+  margin-left: auto;
   font-size: 15px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;

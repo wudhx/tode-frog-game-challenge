@@ -11,8 +11,6 @@
 
 /** HP the hero starts a run with. */
 export const STARTING_MAX_HP = 100;
-/** Hard ceiling on max HP, however many hearts are collected. */
-export const MAX_HP_CAP = 200;
 /** HP a single insect touch costs. */
 export const HIT_DAMAGE = 20;
 /** HP the Heart pickup adds to the pool, and restores. */
@@ -43,6 +41,7 @@ export class Health {
     // Cached values so a 60fps regen does not rewrite the DOM every frame.
     this._lastPct = -1;
     this._lastText = '';
+    this._lastLevelText = '';
     this._lastBuffSig = '';
 
     this.buildHud();
@@ -55,6 +54,7 @@ export class Health {
     this.element.innerHTML = [
       '<div class="hp-head">',
       '  <span class="hp-name">HP</span>',
+      '  <span class="hp-level">Lv.1</span>',
       '  <span class="hp-value">100 / 100</span>',
       '</div>',
       '<div class="hp-track"><div class="hp-fill"></div></div>',
@@ -62,6 +62,7 @@ export class Health {
     ].join('');
 
     this.valueEl = this.element.querySelector('.hp-value');
+    this.levelEl = this.element.querySelector('.hp-level');
     this.fillEl = this.element.querySelector('.hp-fill');
     this.buffsEl = this.element.querySelector('.hp-buffs');
 
@@ -92,10 +93,35 @@ export class Health {
    * @param {number} [amount] HP to add to the maximum.
    */
   addMaxHp(amount = HEART_PICKUP) {
-    this.maxHp = Math.min(MAX_HP_CAP, this.maxHp + amount);
+    this.maxHp += amount;
     this.hp = Math.min(this.maxHp, this.hp + amount);
     this.healFlash = 0.3;
     this.render();
+  }
+
+  /**
+   * Raises the maximum (and current) HP without the heart-pickup flash.
+   *
+   * Used for the small per-kill growth that drives the level curve, so the
+   * panel does not strobe green on every single kill.
+   *
+   * @param {number} amount HP to add.
+   */
+  growMaxHp(amount) {
+    if (amount <= 0) return;
+    this.maxHp += amount;
+    this.hp = Math.min(this.maxHp, this.hp + amount);
+    this.render();
+  }
+
+  /**
+   * Hero level, derived from maximum HP: 100 HP = level 1, +100 per level,
+   * capped at 15. HP may keep growing past level 15.
+   *
+   * @returns {number}
+   */
+  get level() {
+    return Math.min(15, Math.max(1, Math.floor(this.maxHp / 100)));
   }
 
   /**
@@ -201,6 +227,7 @@ export class Health {
     this.healFlash = 0;
     this._lastPct = -1;
     this._lastText = '';
+    this._lastLevelText = '';
     this._lastBuffSig = '';
     this.render();
   }
@@ -222,6 +249,12 @@ export class Health {
     if (text !== this._lastText) {
       this._lastText = text;
       this.valueEl.textContent = text;
+    }
+
+    const levelText = `Lv.${this.level}`;
+    if (levelText !== this._lastLevelText) {
+      this._lastLevelText = levelText;
+      this.levelEl.textContent = levelText;
     }
 
     this.element.classList.toggle('is-hurt', this.hurtFlash > 0);
