@@ -21,6 +21,12 @@ import { sound } from './components/Sound.js';
 import { PowerUpManager } from './components/PowerUp.js';
 import { GeneSystem, GENE_TYPES, TIER_LABELS, TIER_COLORS, formatPerLayer, formatCap } from './components/Genes.js';
 import { TalentSystem, TALENT_INTERVAL, TALENT_SLOTS, TALENTS } from './components/Talents.js';
+import {
+  Awakening,
+  AWAKEN_SCORE_PER_CHARGE,
+  AWAKEN_MAX_CHARGES,
+  AWAKEN_DURATION,
+} from './components/Awakening.js';
 import { scaledParameters } from './components/Difficulty.js';
 import { hud } from './components/Interactables.js';
 import './style.css';
@@ -216,6 +222,7 @@ const powerUps = new PowerUpManager(scene);
 // ---------------------------------------------------------------------------
 const genes = new GeneSystem(scene, 3);
 const talents = new TalentSystem(TALENT_SLOTS);
+const awakening = new Awakening();
 /** Frozen while a gene card or the pause menu is open. */
 let paused = false;
 /** Seconds since the run started, used for the drop-rate curve. */
@@ -304,6 +311,63 @@ function renderTalentPips() {
     `<span class="talent-bar-hint">${hint}</span>`;
 }
 renderTalentPips();
+
+// ---------------------------------------------------------------------------
+// Awakening bar
+// ---------------------------------------------------------------------------
+const awakenBar = document.createElement('div');
+awakenBar.className = 'awaken-bar';
+document.body.appendChild(awakenBar);
+
+/** Rewrites the awakening meter: charge state, progress and timer. */
+function renderAwakenBar() {
+  const pct = Math.round(awakening.progress * 100);
+  const charges = Array.from({ length: AWAKEN_MAX_CHARGES }, (_, i) =>
+    `<span class="awaken-charge${i < awakening.charges ? ' full' : ''}"></span>`
+  ).join('');
+
+  let label;
+  if (awakening.active) {
+    label = `Awakened ${awakening.remaining.toFixed(1)}s`;
+  } else if (awakening.ready) {
+    label = 'Ready · press E';
+  } else {
+    const need = Math.max(0, AWAKEN_SCORE_PER_CHARGE - awakening.scoreProgress);
+    label = `${Math.round(need)} pts to charge`;
+  }
+
+  awakenBar.dataset.state = awakening.active ? 'active' : awakening.ready ? 'ready' : 'charging';
+  awakenBar.innerHTML =
+    '<div class="awaken-head">' +
+    '<span class="awaken-label">Awakening</span>' +
+    `<span class="awaken-charges">${charges}</span>` +
+    `<span class="awaken-text">${label}</span>` +
+    '</div>' +
+    `<div class="awaken-track"><span style="width:${pct}%"></span></div>`;
+}
+renderAwakenBar();
+
+/** Spends a charge and turns the boost on. */
+function triggerAwakening() {
+  if (!awakening.activate()) return;
+  sound.awaken();
+  hud.showAction(
+    `Awakening — ${AWAKEN_DURATION}s of triple damage`,
+    'awaken',
+    '#7c5cff',
+    1600
+  );
+  renderAwakenBar();
+}
+
+window.addEventListener('keydown', (event) => {
+  if (event.code !== 'KeyE') return;
+  if (gameState !== 'playing') return;
+  if (paused) return;
+  if (!awakening.ready) return;
+  event.preventDefault();
+  triggerAwakening();
+});
 
 /** Opens the Take/Skip card for the orb the hero just touched. */
 function showGeneCard() {
@@ -533,6 +597,7 @@ function renderPauseMenu() {
     '    <div class="pause-label">Controls</div>',
     '    <div class="pause-controls">',
     '      Arrow keys — hop · Space — tongue blast (hold to keep firing)<br>',
+    '      E — awakening · 1 / 2 / 3 — pick a talent<br>',
     '      F — take gene · G / Esc — skip gene · C — character panel · P / Esc — pause',
     '    </div>',
     '  </div>',
@@ -627,6 +692,12 @@ function renderCharPanel() {
     : '<div class="char-talent empty">' +
       `No talents yet — ${talents.slotCount} slots, one offer every 3 minutes.</div>`;
 
+  const awakenText = awakening.active
+    ? `Active · ${awakening.remaining.toFixed(1)}s left`
+    : awakening.ready
+      ? 'Charged · press E'
+      : `${Math.round(awakening.progress * 100)}%`;
+
   const stats = [
     ['Level', `${health.level} / 15`],
     ['HP', `${Math.ceil(health.hp)} / ${health.maxHp}`],
@@ -637,6 +708,7 @@ function renderCharPanel() {
     ['Cooldown', `${playerStats.attackCooldown.toFixed(2)}s`],
     ['Move speed', `${Math.round((playerStats.moveSpeedMult - 1) * 100)}%`],
     ['Shield', `${Math.round(playerStats.shield)} / ${Math.round(playerStats.shieldMax)}`],
+    ['Awakening', awakenText],
   ]
     .map(([label, value]) => `<div class="char-stat"><span>${label}</span><b>${value}</b></div>`)
     .join('');
@@ -669,6 +741,7 @@ function renderCharPanel() {
     '      <div><b>Space</b> — tongue blast. Hold to keep firing.</div>',
     '      <div><b>F / G</b> — take or skip a gene.</div>',
     '      <div><b>1 / 2 / 3</b> — pick a talent; <b>Esc</b> declines.</div>',
+    `      <div><b>E</b> — awakening (${AWAKEN_SCORE_PER_CHARGE} points per charge, one stored).</div>`,
     '      <div><b>C</b> — open or close this panel.</div>',
     '      <div><b>P / Esc</b> — pause.</div>',
     '    </div>',
@@ -866,6 +939,9 @@ function resetGame() {
   lastTalentShieldMax = 0;
   playerStats.shield = 0;
   playerStats.shieldMax = 0;
+  // The awakening bar empties with the run.
+  awakening.reset();
+  renderAwakenBar();
   runTime = 0;
   paused = false;
   geneCard.style.display = 'none';
@@ -1185,14 +1261,27 @@ function gameLoop() {
   const talentReduction = Math.max(0, talentStats.damageReduction);
   const talentSpeed = Math.max(-0.5, talentStats.moveSpeed);
 
+  // --- Awakening boost -----------------------------------------------------
+  // Applied as multipliers on top of everything else, so it never changes the
+  // reductions/floors that keep the hero from becoming invincible.
+  const awakenEnded = awakening.update(delta);
+  const awaken = awakening.multipliers();
+  if (awakenEnded) renderAwakenBar();
+
+  const awakenSpeed = Math.max(-0.5, awaken.speedBonus);
   player.setMoveDuration(
-    params.playerMoveDuration * boosts.hopDuration * levelSpeed * (1 - talentSpeed)
+    params.playerMoveDuration *
+      boosts.hopDuration *
+      levelSpeed *
+      (1 - talentSpeed) *
+      (1 - awakenSpeed)
   );
 
   // --- Gene contributions --------------------------------------------------
   const geneStats = genes.stats();
   playerStats.attackPower =
-    1 + (level - 1) * 0.05 + geneStats.attackPower + talentStats.attackPower;
+    (1 + (level - 1) * 0.05 + geneStats.attackPower + talentStats.attackPower) *
+    awaken.attack;
   playerStats.damageReduction = Math.min(
     MAX_TOTAL_DAMAGE_REDUCTION,
     Math.max(0, levelReduction + geneStats.damageReduction + talentReduction)
@@ -1205,13 +1294,16 @@ function gameLoop() {
   );
   attack.radius = Math.min(
     1600,
-    params.attackRadius * boosts.attackRadius + geneStats.attackRange + talentStats.attackRange
+    (params.attackRadius * boosts.attackRadius + geneStats.attackRange + talentStats.attackRange) *
+      awaken.range
   );
 
   // Mirror the derived values for the character panel.
   playerStats.attackRange = attack.radius;
   playerStats.attackCooldown = attack.cooldownDuration;
-  playerStats.moveSpeedMult = levelSpeed * (1 - talentSpeed);
+  playerStats.moveSpeedMult = levelSpeed * (1 - talentSpeed) * (1 + awakenSpeed);
+  playerStats.awakened = awakening.active;
+  playerStats.awakenRemaining = awakening.remaining;
 
   // Beetle genes raise max HP; grant only the newly gained amount so the
   // pool is not topped up every frame.
@@ -1245,6 +1337,7 @@ function gameLoop() {
     showTalentOffer();
   }
   renderTalentPips();
+  renderAwakenBar();
 
   // Gene orbs bob; touching one opens the Take/Skip card and freezes the game.
   if (!talentDue && genes.updateOrbs(delta, player.position)) {
@@ -1635,7 +1728,13 @@ function gameLoop() {
         destroyed.forEach((enemy) => {
           enemy.dispose();
           // The Scavenger talent scales every kill reward.
-          score.addKillPoints(Math.round(enemy.type.points * (1 + talentStats.scoreMult)));
+          const points = Math.round(enemy.type.points * (1 + talentStats.scoreMult));
+          score.addKillPoints(points);
+          // Those same points charge the awakening bar.
+          if (awakening.addScore(points)) {
+            hud.showAction('Awakening charged — press E', 'awaken', '#7c5cff', 1600);
+            renderAwakenBar();
+          }
           // Every kill nudges the hero's maximum HP, which is what raises
           // his level over a run.
           health.growMaxHp(KILL_MAX_HP_GAIN);
@@ -1837,7 +1936,12 @@ function gameLoop() {
   // =======================================================================
   // 7. SCORE / FLOWER GROWTH
   // =======================================================================
+  const scoreBefore = score.value;
   score.addSurvivalPoints(delta);
+  // Survival points charge the awakening bar too, so a passive run still builds.
+  if (awakening.addScore(score.value - scoreBefore)) {
+    hud.showAction('Awakening charged — press E', 'awaken', '#7c5cff', 1600);
+  }
 
   const milestone = Math.floor(score.value / 200);
   if (milestone > lastFlowerMilestone) {
@@ -1872,6 +1976,10 @@ function gameLoop() {
     // Level, genes and talents can reduce incoming damage, but never past
     // the global ceiling — 100% would make the frog invincible.
     damage *= 1 - Math.min(MAX_TOTAL_DAMAGE_REDUCTION, playerStats.damageReduction);
+
+    // An active awakening softens every hit further, applied last so it stacks
+    // with (rather than replaces) the reduction above.
+    damage *= awaken.damageTaken;
 
     // A shield absorbs damage before HP is touched.
     if (playerStats.shield > 0) {
@@ -1949,6 +2057,7 @@ window.__hud = {
   get attack() { return attack; },
   get genes() { return genes; },
   get talents() { return talents; },
+  get awakening() { return awakening; },
   get paused() { return paused; },
   get scenery() { return scenery; },
 
@@ -1975,6 +2084,17 @@ window.__hud = {
   /** Forces the next talent offer to appear. Only for arranging a test. */
   primeTalentOffer() {
     talents.primeOffer();
+  },
+
+  /**
+   * Fills the awakening bar for a test.
+   *
+   * @param {number} [charges] Charges to bank.
+   */
+  chargeAwakening(charges = 1) {
+    awakening.charges = charges;
+    awakening.scoreProgress = 0;
+    renderAwakenBar();
   },
 
   /**

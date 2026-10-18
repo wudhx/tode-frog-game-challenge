@@ -184,7 +184,7 @@ canvas.game {
 /* --- Shelter readout (shown while inside a house) ------------------------ */
 .shelter-readout {
   position: fixed;
-  top: 214px;
+  top: 250px;
   left: 20px;
   display: none;
   flex-direction: column;
@@ -710,6 +710,90 @@ canvas.game {
 
 .char-talent.empty {
   opacity: 0.55;
+}
+
+/* --- Awakening bar ------------------------------------------------------- */
+.awaken-bar {
+  position: fixed;
+  top: 206px;
+  left: 20px;
+  z-index: 10;
+  width: 212px;
+  padding: 6px 10px 8px;
+  border-radius: 12px;
+  background: rgba(27, 67, 50, 0.82);
+  color: #f2f7f3;
+  font-size: 10px;
+  font-weight: 700;
+  user-select: none;
+  pointer-events: none;
+  font-family: inherit;
+}
+
+.awaken-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.awaken-label {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.awaken-charges {
+  display: flex;
+  gap: 3px;
+}
+
+.awaken-charge {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.awaken-charge.full {
+  background: #a88bff;
+  box-shadow: 0 0 8px rgba(168, 139, 255, 0.9);
+}
+
+.awaken-text {
+  margin-left: auto;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+.awaken-track {
+  height: 4px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+
+.awaken-track span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #7c5cff, #b79cff);
+  transition: width 0.18s linear;
+}
+
+.awaken-bar[data-state='ready'] {
+  background: rgba(70, 44, 140, 0.9);
+  box-shadow: 0 0 0 1px rgba(168, 139, 255, 0.5), 0 6px 18px rgba(70, 44, 140, 0.35);
+}
+
+.awaken-bar[data-state='active'] {
+  background: linear-gradient(120deg, #5a3bd6, #8a68ff);
+  box-shadow: 0 0 22px rgba(138, 104, 255, 0.7);
+}
+
+.awaken-bar[data-state='active'] .awaken-track span {
+  background: #ffffff;
 }
 
 /* --- Talent bar ---------------------------------------------------------- */
