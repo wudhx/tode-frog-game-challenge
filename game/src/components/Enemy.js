@@ -9,6 +9,8 @@ export const ENEMY_SPAWN_DELAY = 2.5;
 export const ENEMY_SPEED = 45;
 /** Height the insects hover at, in world units. */
 export const ENEMY_HOVER = 38;
+/** Chance a spawned insect is an elite (gold-edged, guaranteed gene drop). */
+export const ELITE_CHANCE = 0.1;
 
 // Spawn positions are chosen by main.js: on a board this large, insects have
 // to appear relative to the hero rather than at fixed map corners.
@@ -440,8 +442,9 @@ export class Enemy {
    * @param {THREE.Scene} scene The scene the enemy should be added to.
    * @param {THREE.Vector2} spawnPoint Starting position on the ground plane.
    * @param {string} [typeKey] Which archetype to spawn.
+   * @param {boolean} [elite] Force elite on/off; defaults to a random roll.
    */
-  constructor(scene, spawnPoint, typeKey = 'fly') {
+  constructor(scene, spawnPoint, typeKey = 'fly', elite = Math.random() < ELITE_CHANCE) {
     this.scene = scene;
 
     /** Archetype definition. */
@@ -472,6 +475,23 @@ export class Enemy {
     this.visual = getBlueprint(this.typeKey).clone(true);
     this.visual.position.z = ENEMY_HOVER;
     this.group.add(this.visual);
+
+    // Elites wear a gold ring and always drop a gene.
+    this.elite = elite;
+    if (elite) {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(this.type.radius * 1.15, 2.4, 6, 24),
+        new THREE.MeshStandardMaterial({
+          color: 0xffc83d,
+          emissive: 0xffa500,
+          emissiveIntensity: 0.7,
+          roughness: 0.4,
+        })
+      );
+      ring.position.z = ENEMY_HOVER;
+      this.group.add(ring);
+      this.eliteRing = ring;
+    }
 
     // Collect the wings so they can be flapped.
     this.wings = [];

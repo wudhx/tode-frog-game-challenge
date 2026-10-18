@@ -153,7 +153,7 @@ canvas.game {
 /* --- Shelter readout (shown while inside a house) ------------------------ */
 .shelter-readout {
   position: fixed;
-  top: 20px;
+  top: 210px;
   left: 20px;
   display: none;
   flex-direction: column;
@@ -200,6 +200,150 @@ canvas.game {
   font-weight: 600;
   color: #a04040;
   text-align: right;
+}
+
+/* --- Gene bar (locked genes) --------------------------------------------- */
+.gene-bar {
+  position: fixed;
+  top: 100px;
+  left: 20px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 212px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  user-select: none;
+  pointer-events: none;
+  font-family: inherit;
+}
+
+.gene-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1b4332;
+}
+
+.gene-slot.empty {
+  opacity: 0.45;
+}
+
+.gene-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(27, 67, 50, 0.2);
+  flex: none;
+}
+
+.gene-slot[data-tier='common'] .gene-dot {
+  box-shadow: 0 0 0 2px rgba(216, 221, 227, 0.55);
+}
+
+.gene-slot[data-tier='rare'] .gene-dot {
+  box-shadow: 0 0 0 2px rgba(77, 166, 255, 0.55);
+}
+
+.gene-slot[data-tier='legendary'] .gene-dot {
+  box-shadow: 0 0 0 2px rgba(255, 200, 61, 0.7);
+}
+
+.gene-name {
+  flex: 1;
+}
+
+.gene-stacks {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+/* --- Gene pickup card ---------------------------------------------------- */
+.gene-card {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 20, 12, 0.55);
+  font-family: inherit;
+}
+
+.gene-card-box {
+  width: 320px;
+  padding: 22px 24px;
+  border-radius: 18px;
+  background: #ffffff;
+  color: #1b4332;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+}
+
+.gene-card-tier {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.gene-card-title {
+  font-size: 24px;
+  font-weight: 800;
+  margin: 4px 0 2px;
+}
+
+.gene-card-desc {
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.gene-card-action {
+  margin: 14px 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.gene-card-stacks {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.gene-card-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.gene-card-buttons button {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: 10px;
+  border: none;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.gene-take {
+  background: #43b96b;
+  color: #ffffff;
+}
+
+.gene-take:disabled {
+  background: #c7c7c7;
+  cursor: not-allowed;
+}
+
+.gene-skip {
+  background: #e9ecef;
+  color: #1b4332;
 }
 
 /* --- Game over overlay --------------------------------------------------- */

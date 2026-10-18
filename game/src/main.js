@@ -19,6 +19,7 @@ import { HighScores } from './components/HighScores.js';
 import { Health, HIT_DAMAGE, HEART_PICKUP, HIT_INVULNERABILITY } from './components/Health.js';
 import { sound } from './components/Sound.js';
 import { PowerUpManager } from './components/PowerUp.js';
+import { GeneSystem, GENE_TYPES, TIER_LABELS, TIER_COLORS } from './components/Genes.js';
 import { scaledParameters } from './components/Difficulty.js';
 import { hud } from './components/Interactables.js';
 import './style.css';
@@ -203,6 +204,112 @@ const attack = new Attack(scene, player);
 const powerUps = new PowerUpManager(scene);
 
 // ---------------------------------------------------------------------------
+// Genes
+// ---------------------------------------------------------------------------
+const genes = new GeneSystem(scene, 3);
+/** Frozen while a gene card or the pause menu is open. */
+let paused = false;
+/** Seconds since the run started, used for the drop-rate curve. */
+let runTime = 0;
+/** Beetle genes raise max HP; track the last applied bonus to grant only the delta. */
+let lastGeneMaxHp = 0;
+
+// ---------------------------------------------------------------------------
+// Gene HUD (locked genes) and the pickup card
+// ---------------------------------------------------------------------------
+const geneBar = document.createElement('div');
+geneBar.className = 'gene-bar';
+document.body.appendChild(geneBar);
+
+/** Rewrites the three (or more) locked-gene pips. */
+function renderGeneBar() {
+  const cells = [];
+  for (let i = 0; i < genes.slotCount; i++) {
+    const slot = genes.slots[i];
+    if (!slot) {
+      cells.push(
+        '<div class="gene-slot empty">' +
+          '<span class="gene-dot"></span>' +
+          '<span class="gene-name">Empty</span>' +
+        '</div>'
+      );
+      continue;
+    }
+    const cfg = GENE_TYPES[slot.key];
+    const color = `#${TIER_COLORS[slot.tier].toString(16).padStart(6, '0')}`;
+    cells.push(
+      `<div class="gene-slot" data-tier="${slot.tier}">` +
+        `<span class="gene-dot" style="background:${color}"></span>` +
+        `<span class="gene-name">${cfg.label}</span>` +
+        `<span class="gene-stacks">x${slot.stacks}</span>` +
+      '</div>'
+    );
+  }
+  geneBar.innerHTML = cells.join('');
+}
+renderGeneBar();
+
+const geneCard = document.createElement('div');
+geneCard.className = 'gene-card';
+geneCard.style.display = 'none';
+document.body.appendChild(geneCard);
+
+/** Opens the Take/Skip card for the orb the hero just touched. */
+function showGeneCard() {
+  const info = genes.preview();
+  if (!info) return;
+
+  paused = true;
+  geneCard.style.display = 'flex';
+
+  const tierColor = `#${TIER_COLORS[info.tier].toString(16).padStart(6, '0')}`;
+
+  let actionText;
+  if (info.kind === 'new') {
+    actionText = `Lock into slot ${info.slotIndex + 1} · permanent`;
+  } else if (info.kind === 'full') {
+    actionText = 'All slots locked — cannot take this gene';
+  } else if (info.kind === 'upgrade') {
+    actionText = `Upgrade ${TIER_LABELS[info.currentTier]} → ${TIER_LABELS[info.nextTier]}`;
+  } else if (info.nextTier) {
+    actionText = `Merge ${info.merge}/3 → ${TIER_LABELS[info.nextTier]}`;
+  } else {
+    actionText = `Merge ${info.merge}/3`;
+  }
+
+  geneCard.innerHTML = [
+    '<div class="gene-card-box">',
+    `  <div class="gene-card-tier" style="color:${tierColor}">${TIER_LABELS[info.tier]}</div>`,
+    `  <div class="gene-card-title">${info.label} Gene</div>`,
+    `  <div class="gene-card-desc">${info.description}</div>`,
+    `  <div class="gene-card-action">${actionText}</div>`,
+    `  <div class="gene-card-stacks">Stacks ${info.stacks}</div>`,
+    '  <div class="gene-card-buttons">',
+    `    <button class="gene-take"${info.kind === 'full' ? ' disabled' : ''}>Take</button>`,
+    '    <button class="gene-skip">Skip</button>',
+    '  </div>',
+    '</div>',
+  ].join('');
+
+  geneCard.querySelector('.gene-take').onclick = () => resolveGene(true);
+  geneCard.querySelector('.gene-skip').onclick = () => resolveGene(false);
+}
+
+/**
+ * Closes the card and either applies or discards the gene.
+ *
+ * @param {boolean} take
+ */
+function resolveGene(take) {
+  genes.resolve(take);
+  geneCard.style.display = 'none';
+  paused = false;
+  // Throw away the frozen time so the world does not jump on resume.
+  clock.getDelta();
+  renderGeneBar();
+}
+
+// ---------------------------------------------------------------------------
 // Per-frame interaction state
 // ---------------------------------------------------------------------------
 /** Tracks the bush hide / expose window. */
@@ -346,6 +453,14 @@ function resetGame() {
   if (scenery) for (const pond of scenery.ponds) pond.cooldown = 0;
   lastFlowerMilestone = 0;
   damagedBushes.clear();
+
+  // Genes and their HUD reset with the run.
+  genes.reset();
+  lastGeneMaxHp = 0;
+  runTime = 0;
+  paused = false;
+  geneCard.style.display = 'none';
+  renderGeneBar();
 
   if (gameOverOverlay) {
     gameOverOverlay.style.display = 'none';
@@ -632,6 +747,14 @@ renderer.setAnimationLoop(() => {
     return;
   }
 
+  // A gene card (or the pause menu) freezes the world but keeps rendering.
+  if (paused) {
+    renderer.render(scene, camera);
+    return;
+  }
+
+  runTime += delta;
+
   const params = scaledParameters(score.value);
   const boosts = powerUps.multipliers;
 
@@ -649,8 +772,36 @@ renderer.setAnimationLoop(() => {
   const levelSpeed = 1 - (level - 1) * 0.01;
 
   player.setMoveDuration(params.playerMoveDuration * boosts.hopDuration * levelSpeed);
-  attack.cooldownDuration = params.attackCooldown;
-  attack.radius = params.attackRadius * boosts.attackRadius;
+
+  // --- Gene contributions --------------------------------------------------
+  const geneStats = genes.stats();
+  playerStats.attackPower = 1 + (level - 1) * 0.05 + geneStats.attackPower;
+  playerStats.damageReduction = Math.min(
+    MAX_TOTAL_DAMAGE_REDUCTION,
+    levelReduction + geneStats.damageReduction
+  );
+  playerStats.lifesteal = Math.min(0.35, geneStats.lifesteal);
+
+  attack.cooldownDuration = Math.max(
+    geneStats.cooldownFloor,
+    params.attackCooldown * geneStats.cooldownMult
+  );
+  attack.radius = Math.min(
+    1600,
+    params.attackRadius * boosts.attackRadius + geneStats.attackRange
+  );
+
+  // Beetle genes raise max HP; grant only the newly gained amount so the
+  // pool is not topped up every frame.
+  if (geneStats.maxHp > lastGeneMaxHp) {
+    health.growMaxHp(geneStats.maxHp - lastGeneMaxHp);
+    lastGeneMaxHp = geneStats.maxHp;
+  }
+
+  // Gene orbs bob; touching one opens the Take/Skip card and freezes the game.
+  if (genes.updateOrbs(delta, player.position)) {
+    showGeneCard();
+  }
 
   // --- Player movement ----------------------------------------------------
   player.resolveTarget = trimHopToWalls;
@@ -1016,7 +1167,20 @@ renderer.setAnimationLoop(() => {
   if (attackActive && !attackWasActive) {
     const hit = attack.enemiesInRange(enemies);
     if (hit.length > 0) {
-      const destroyed = hit.filter((enemy) => enemy.takeHit(playerStats.attackPower));
+      const destroyed = hit.filter((enemy) => {
+        // Damage actually dealt (armour + remaining HP both matter).
+        const dealt = Math.min(
+          playerStats.attackPower * (1 - enemy.armor),
+          Math.max(0, enemy.hp)
+        );
+        const killed = enemy.takeHit(playerStats.attackPower);
+
+        // Mosquito genes return a share of the damage as HP.
+        if (playerStats.lifesteal > 0 && dealt > 0) {
+          health.heal(dealt * playerStats.lifesteal);
+        }
+        return killed;
+      });
 
       if (destroyed.length > 0) {
         destroyed.forEach((enemy) => {
@@ -1025,6 +1189,8 @@ renderer.setAnimationLoop(() => {
           // Every kill nudges the hero's maximum HP, which is what raises
           // his level over a run.
           health.growMaxHp(KILL_MAX_HP_GAIN);
+          // And it may drop a gene orb of that species.
+          genes.maybeDrop(enemy, runTime);
         });
         enemies = enemies.filter((enemy) => !destroyed.includes(enemy));
         sound.kill();
@@ -1307,7 +1473,29 @@ window.__hud = {
   get score() { return score; },
   get health() { return health; },
   get playerStats() { return playerStats; },
+  get genes() { return genes; },
+  get paused() { return paused; },
   get scenery() { return scenery; },
+
+  /**
+   * Spawns a gene orb at a point. Only for arranging a test.
+   *
+   * @param {string} key Species key.
+   * @param {string} tier Quality tier.
+   * @param {number} x World X.
+   * @param {number} y World Y.
+   */
+  spawnGene(key, tier, x, y) {
+    return genes.spawnOrb(key, tier, x, y);
+  },
+
+  /** Clears every gene and unpauses. Only for arranging a test. */
+  clearGenes() {
+    genes.reset();
+    geneCard.style.display = 'none';
+    paused = false;
+    renderGeneBar();
+  },
 
   /**
    * Spawns a specific insect at a point. Only for arranging a test.
