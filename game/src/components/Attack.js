@@ -54,6 +54,11 @@ export class Attack {
     // Seconds the ring has been visible for.
     this.visualTimer = 0;
 
+    // True while Space is held down. Driving auto-fire from the game loop
+    // (rather than relying on OS key-repeat) means holding Space keeps firing
+    // even while arrow keys are pressed.
+    this.spaceHeld = false;
+
     this.bindInput();
   }
 
@@ -64,7 +69,13 @@ export class Attack {
     window.addEventListener('keydown', (event) => {
       if (event.code !== 'Space') return;
       event.preventDefault();
+      this.spaceHeld = true;
       this.tryAttack();
+    });
+
+    window.addEventListener('keyup', (event) => {
+      if (event.code !== 'Space') return;
+      this.spaceHeld = false;
     });
   }
 
@@ -98,6 +109,12 @@ export class Attack {
   update(delta) {
     if (this.cooldown > 0) {
       this.cooldown = Math.max(0, this.cooldown - delta);
+    }
+
+    // Holding Space keeps firing as soon as the cooldown allows, regardless
+    // of movement keys or OS key-repeat behaviour.
+    if (this.spaceHeld && this.enabled && this.cooldown <= 0) {
+      this.tryAttack();
     }
 
     if (this.visualTimer > 0) {

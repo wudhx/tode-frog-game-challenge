@@ -95,6 +95,10 @@ export const GENE_TYPES = {
 export const GENE_PICKUP_RADIUS = 48;
 /** Consecutive kills without a drop before one is forced. */
 export const GENE_PITY = 10;
+/** Drop chance once every slot is legendary (stack-only orbs). */
+export const LEGENDARY_DROP_CHANCE = 0.08;
+/** Kills per stack once every slot is legendary. */
+export const LEGENDARY_STACK_KILLS = 30;
 /** Shown on every gene card so stacking is never a mystery. */
 export const STACK_RULE =
   '3 same-quality pickups upgrade the quality. Upgrading converts existing stacks by the per-stack ratio.';
@@ -222,28 +226,26 @@ export class GeneSystem {
    * @returns {object|null} The spawned orb, or null.
    */
   maybeDrop(enemy, runTime, isBoss = false) {
-    if (this.allLegendary) {
-      this.finished = true;
-      return null;
-    }
-
     const key = enemy.type.key;
     const isLocked = this.slots.some((g) => g && g.key === key);
     const hasFreeSlot = this.slots.some((g) => g === null);
     // A species that is neither locked nor able to take a free slot is useless.
     if (!isLocked && !hasFreeSlot) return null;
 
+    const allLegendary = this.allLegendary;
     this.killsSinceDrop += 1;
 
-    let chance = this.dropChance(runTime);
+    // After everything is legendary the orbs still come, but only as stack
+    // fuel, and at a much lower rate.
+    let chance = allLegendary ? LEGENDARY_DROP_CHANCE : this.dropChance(runTime);
     if (enemy.elite) chance = 1;
     if (isBoss) chance = 1;
-    if (this.killsSinceDrop >= GENE_PITY) chance = 1;
+    if (!allLegendary && this.killsSinceDrop >= GENE_PITY) chance = 1;
 
     if (Math.random() >= chance) return null;
 
     this.killsSinceDrop = 0;
-    const tier = this.rollTier(enemy.elite, isBoss);
+    const tier = allLegendary ? 'legendary' : this.rollTier(enemy.elite, isBoss);
     return this.spawnOrb(key, tier, enemy.position.x, enemy.position.y);
   }
 
@@ -328,7 +330,7 @@ export class GeneSystem {
     if (filled.length === 0) return null;
 
     this.stackKills += 1;
-    const threshold = isElite ? 1 : 20;
+    const threshold = isElite ? 1 : LEGENDARY_STACK_KILLS;
     if (this.stackKills < threshold) return null;
     this.stackKills = 0;
 
@@ -395,11 +397,13 @@ export class GeneSystem {
       return true;
     }
 
-    // Same tier: one full stack, and the merge counter advances.
+    // Same tier: one full stack. Merge progress only matters below legendary.
     slot.stacks += 1;
-    slot.merge += 1;
-    if (slot.merge >= 3 && currentIndex < GENE_TIERS.length - 1) {
-      this.upgradeSlot(slot, GENE_TIERS[currentIndex + 1]);
+    if (currentIndex < GENE_TIERS.length - 1) {
+      slot.merge += 1;
+      if (slot.merge >= 3) {
+        this.upgradeSlot(slot, GENE_TIERS[currentIndex + 1]);
+      }
     }
     return true;
   }
@@ -472,11 +476,15 @@ export class GeneSystem {
       stacks = slot.stacks + cfg.perLayer[orb.tier] / cfg.perLayer[slot.tier];
     } else {
       stacks = slot.stacks + 1;
-      merge = slot.merge + 1;
-      if (merge >= 3 && currentIndex < GENE_TIERS.length - 1) {
-        kind = 'upgrade';
-        nextTier = GENE_TIERS[currentIndex + 1];
-        stacks = stacks * (cfg.perLayer[slot.tier] / cfg.perLayer[nextTier]);
+      if (currentIndex < GENE_TIERS.length - 1) {
+        merge = slot.merge + 1;
+        if (merge >= 3) {
+          kind = 'upgrade';
+          nextTier = GENE_TIERS[currentIndex + 1];
+          stacks = stacks * (cfg.perLayer[slot.tier] / cfg.perLayer[nextTier]);
+          merge = 0;
+        }
+      } else {
         merge = 0;
       }
     }
@@ -489,6 +497,7 @@ export class GeneSystem {
       currentTier: slot.tier,
       nextTier,
       merge,
+      maxed: currentIndex === GENE_TIERS.length - 1,
     };
   }
 

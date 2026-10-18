@@ -287,7 +287,9 @@ function showGeneCard() {
     mergeText = 'Quality upgraded · stacks converted proportionally';
   } else {
     actionText = `Stacks ${fmt(info.currentStacks)} → ${fmt(info.stacks)}`;
-    mergeText = `Merge ${info.merge}/3`;
+    mergeText = info.maxed
+      ? 'Max quality · stacks keep growing'
+      : `Merge ${info.merge}/3`;
   }
 
   geneCard.innerHTML = [
@@ -1516,6 +1518,7 @@ window.__hud = {
   get score() { return score; },
   get health() { return health; },
   get playerStats() { return playerStats; },
+  get attack() { return attack; },
   get genes() { return genes; },
   get paused() { return paused; },
   get scenery() { return scenery; },
