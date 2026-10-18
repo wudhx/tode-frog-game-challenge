@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { createCamera } from './components/Camera.js';
 import { createRenderer } from './components/Renderer.js';
 import { Player } from './components/Player.js';
-import { Enemy, pickEnemyType, bossProfile, BOSS_SPECIES, BOSS_SUMMON_COUNT } from './components/Enemy.js';
+import { Enemy, pickEnemyType, bossProfile, bossAbilityCooldown, BOSS_SPECIES, BOSS_SUMMON_COUNT, BOSS_ABILITIES } from './components/Enemy.js';
 import { Map, BOARD_HALF, TILE_SIZE } from './components/Map.js';
 import {
   addHouses,
@@ -78,6 +78,12 @@ const BOSS_BONUS_GROWTH = 0.25;
  * range keeps the hero safe — but the boss survives long enough to be a boss.
  */
 const BOSS_AWAKEN_DAMAGE_MULT = 0.6;
+
+// --- Boss signature abilities ---------------------------------------------
+/** Poison applied by a centipede pool: ticks and their cadence live here. */
+const VENOM_STACK_LIMIT = 3;
+/** How far ahead of the boss a stag beetle's charge telegraphs, in units. */
+const CHARGE_REACH = 520;
 
 /**
  * The hero's derived combat stats.
@@ -1069,6 +1075,12 @@ function spawnEnemy(speed) {
 let boss = null;
 let nextBossScore = FIRST_BOSS_SCORE;
 let bossesSpawned = 0;
+/** Live venom puddles left by a centipede boss. */
+const venomPools = [];
+/** Lingering poison on the hero after standing in venom. */
+const poison = { stacks: 0, timer: 0, tick: 0, damage: 0, interval: 1 };
+/** Ground ring marking where a mole boss will surface. */
+let burrowMarker = null;
 
 /**
  * Spawns a boss and prepares the HUD for it.
@@ -2007,6 +2019,7 @@ function gameLoop() {
       hud.showAction('The boss calls its brood!', 'boss', '#ff3d6e', 1500);
     }
     renderBossBar();
+    updateBossAbility(delta);
   }
 
   // =======================================================================
@@ -2174,35 +2187,19 @@ function gameLoop() {
   // --- Contact damage ------------------------------------------------------
   const attacker = safe ? null : enemyTouchingPlayer();
   if (attacker && health.invulnerable <= 0) {
-    let damage = attacker.contactDamage || HIT_DAMAGE;
-
-    // The pond soaks a fifth of the damage while the hero is standing in it.
-    if (inWater) damage *= 1 - POND_DAMAGE_SOAK;
-
-    // Level, genes and talents can reduce incoming damage, but never past
-    // the global ceiling — 100% would make the frog invincible.
-    damage *= 1 - Math.min(MAX_TOTAL_DAMAGE_REDUCTION, playerStats.damageReduction);
-
-    // An active awakening softens every hit further, applied last so it stacks
-    // with (rather than replaces) the reduction above.
-    damage *= awaken.damageTaken;
-
-    // A shield absorbs damage before HP is touched.
-    if (playerStats.shield > 0) {
-      const absorbed = Math.min(playerStats.shield, damage);
-      playerStats.shield -= absorbed;
-      damage -= absorbed;
-    }
-
-    if (damage > 0.01) {
-      health.takeHit(damage);
-      sound.hurt();
-    } else {
-      // The shield ate the whole hit. Start the mercy window anyway so a
-      // shield is not drained once per frame.
-      health.invulnerable = HIT_INVULNERABILITY;
+    // A mid-charge body-check already landed its own hit this cast; the
+    // ordinary contact tick would double-dip on the same collision.
+    const charging = attacker.boss && attacker.abilityPhase === 'dash';
+    if (!charging) {
+      // The full reduction chain (pond soak, damage reduction, awakening,
+      // shield) lives in `hurtHero` so every hazard is mitigated the same way.
+      hurtHero(attacker.contactDamage || HIT_DAMAGE);
     }
   }
+
+  // Vemon puddles, burrow warnings and the death of a boss all need ageing
+  // even on frames where nothing else happens.
+  updateVenom(delta);
 
   if (player.model) {
     const blinking = health.shielded && Math.floor(health.invulnerable * 12) % 2 === 1;
@@ -2226,9 +2223,371 @@ function gameLoop() {
   renderer.render(scene, camera);
 }
 
-spawnEnemy();
+/**
+ * Applies one damage packet to the hero through the full pipeline.
+ *
+ * Contact damage used to be the only source, so the reduction chain lived
+ * inline in the contact branch. Boss abilities are separate sources, and
+ * copying that chain into each one would guarantee they drift apart — the
+ * venom would ignore the shield, the charge would skip the awakening, and
+ * so on. Everything that hurts the hero now goes through here.
+ *
+ * @param {number} raw Incoming damage before any mitigation.
+ * @param {{ignoreInvulnerability?: boolean}} [options]
+ * @returns {number} Damage actually taken after shields and reduction.
+ */
+function hurtHero(raw, options = {}) {
+  if (health.dead) return 0;
+  if (!options.ignoreInvulnerability && health.invulnerable > 0) return 0;
 
-// Hold the run behind a loading screen until the real frog model is ready.
+  let damage = raw;
+  // `inWater` and `awaken` are locals of the animation loop; the module-level
+  // equivalents are what a helper outside the loop can read.
+  if (pondState.inWater) damage *= 1 - POND_DAMAGE_SOAK;
+  damage *= 1 - Math.min(MAX_TOTAL_DAMAGE_REDUCTION, playerStats.damageReduction);
+  damage *= awakening.multipliers().damageTaken;
+
+  if (playerStats.shield > 0) {
+    const absorbed = Math.min(playerStats.shield, damage);
+    playerStats.shield -= absorbed;
+    damage -= absorbed;
+  }
+
+  if (damage > 0.01) {
+    health.takeHit(damage);
+    sound.hurt();
+    return damage;
+  }
+
+  // The shield ate the whole packet. Start the mercy window anyway so a
+  // lingering hazard is not drained once per frame.
+  health.invulnerable = Math.max(health.invulnerable, HIT_INVULNERABILITY * 0.5);
+  return 0;
+}
+
+/**
+ * Advances the live boss's signature ability.
+ *
+ * Each giant owns a move set no ordinary insect has. They share one phase
+ * machine (`windup → resolve → cooldown`) but resolve differently, so the
+ * three bosses ask for three different answers: sidestep the stag beetle's
+ * charge, keep moving out of the centipede's venom, and clear the mole's
+ * burrow marker before it surfaces.
+ *
+ * @param {number} delta Seconds since the previous frame.
+ */
+function updateBossAbility(delta) {
+  if (!boss || !boss.abilityKey) return;
+
+  const ability = boss.ability;
+
+  // ---- Not casting: count down, then start the next one ----------------
+  if (boss.abilityPhase === 'idle') {
+    boss.abilityTimer -= delta;
+    if (boss.abilityTimer > 0) return;
+
+    boss.abilityPhase = 'windup';
+    boss.abilityPhaseTimer = ability.windup || 0.6;
+    boss.abilityActive = true;
+    boss.setAuraIntensity(3);
+    sound.awaken();
+
+    if (boss.abilityKey === 'charge') {
+      // Lock the dash direction at telegraph time. Following the hero *during*
+      // the wind-up would make the move unavoidable, which defeats the point.
+      const dx = player.position.x - boss.position.x;
+      const dy = player.position.y - boss.position.y;
+      const len = Math.hypot(dx, dy) || 1;
+      boss.chargeDir = new THREE.Vector2(dx / len, dy / len);
+      hud.showAction('The giant winds up a charge — move!', 'boss', ability.color, 1200);
+    } else if (boss.abilityKey === 'venom') {
+      hud.showAction('Venom spray!', 'boss', ability.color, 1200);
+    } else if (boss.abilityKey === 'burrow') {
+      // The mole dives immediately: the danger zone locks onto wherever the
+      // hero is standing right now, so standing still is what kills you.
+      boss.danger = {
+        x: player.position.x,
+        y: player.position.y,
+        radius: ability.dangerRadius,
+      };
+      boss.visual.visible = false;
+      startedBurrowMarker();
+      hud.showAction('The ground shakes — get clear!', 'boss', ability.color, 1400);
+    }
+    return;
+  }
+
+  // ---- Resolve the phase ------------------------------------------------
+  boss.abilityPhaseTimer -= delta;
+
+  if (boss.abilityKey === 'charge') {
+    if (boss.abilityPhase === 'windup') {
+      if (boss.abilityPhaseTimer > 0) return;
+      boss.abilityPhase = 'dash';
+      boss.abilityPhaseTimer = ability.duration;
+      boss.chargeHit = false;
+      boss.chargeTravelled = 0;
+    }
+
+    // Drive the body along the locked vector.
+    //
+    // The dash advances by a fraction of `distance` per frame, not by
+    // "speed x delta". Frame-time scaling made the same move land at wildly
+    // different ranges depending on the machine — a headless run covered
+    // 126 units where a smooth 60fps run covered 500 — which made the move
+    // feel random. Counting frames keeps the reach constant.
+    const travelled = boss.chargeTravelled || 0;
+    const legStep = ability.distance / Math.max(1, ability.dashFrames);
+    const probe = new THREE.Vector3(
+      boss.position.x + boss.chargeDir.x * legStep,
+      boss.position.y + boss.chargeDir.y * legStep,
+      0
+    );
+    boss.chargeTravelled = travelled + legStep;
+    if (collidesWithObstacle(probe, enemyObstacles, boss.radius * 0.6)) {
+      // Slammed into a tree or a wall: the charge ends early.
+      boss.abilityPhaseTimer = 0;
+      hud.showAction('The charge crashes into the scenery!', 'boss', '#ffd166', 1200);
+    } else {
+      boss.group.position.x = probe.x;
+      boss.group.position.y = probe.y;
+      clampToBoard(boss.position, boss.radius * 0.5);
+      if (!boss.chargeHit) {
+        const reach = boss.radius + player.radius;
+        if (
+          !safeFromHazards() &&
+          Math.hypot(
+            boss.position.x - player.position.x,
+            boss.position.y - player.position.y
+          ) < reach
+        ) {
+          boss.chargeHit = true;
+          hurtHero(boss.contactDamage * ability.damageMult, {
+            ignoreInvulnerability: true,
+          });
+          hud.showAction('Charged!', 'boss', ability.color, 900);
+        }
+      }
+    }
+    if (boss.abilityPhaseTimer <= 0) finishBossAbility();
+    return;
+  }
+
+  if (boss.abilityKey === 'venom') {
+    if (boss.abilityPhaseTimer > 0) return;
+
+    // Scatter pools in a fan ahead of the boss.
+    const baseAngle = Math.atan2(
+      player.position.y - boss.position.y,
+      player.position.x - boss.position.x
+    );
+    for (let i = 0; i < ability.pools; i++) {
+      const spread = (i - (ability.pools - 1) / 2) * 0.5;
+      const distance = 130 + i * 55;
+      const px = boss.position.x + Math.cos(baseAngle + spread) * distance;
+      const py = boss.position.y + Math.sin(baseAngle + spread) * distance;
+      venomPools.push({
+        x: px,
+        y: py,
+        radius: ability.poolRadius,
+        life: ability.life,
+        tickTimer: 0,
+        // Each puddle carries its own numbers. Reading them off the live boss
+        // meant a puddle went inert the moment the boss died — and puddles
+        // outlive their caster by several seconds.
+        tickDamage: ability.tickDamage,
+        tickInterval: ability.tickInterval,
+        poisonDamage: ability.poisonDamage,
+        poisonInterval: ability.poisonInterval,
+        poisonDuration: ability.poisonDuration,
+        mesh: makeVenomPatch(px, py, ability.poolRadius),
+      });
+    }
+    finishBossAbility();
+    return;
+  }
+
+  if (boss.abilityKey === 'burrow') {
+    if (boss.abilityPhaseTimer > 0) return;
+
+    // Surface. Anyone still inside the marker takes the burst.
+    boss.visual.visible = true;
+    boss.group.position.set(boss.danger.x, boss.danger.y, 0);
+    const inside =
+      !safeFromHazards() &&
+      Math.hypot(
+        player.position.x - boss.danger.x,
+        player.position.y - boss.danger.y
+      ) < boss.danger.radius + player.radius;
+
+    clearBurrowMarker();
+    boss.danger = null;
+
+    if (inside) {
+      hurtHero(ability.burstDamage, { ignoreInvulnerability: true });
+      hud.showAction('The giant surfaces beneath you!', 'boss', ability.color, 1400);
+    } else {
+      hud.showAction('The giant bursts out of the ground!', 'boss', ability.color, 1200);
+    }
+    finishBossAbility();
+  }
+}
+
+/** Returns the boss to its cooldown state after a cast resolves. */
+function finishBossAbility() {
+  if (!boss) return;
+  boss.abilityPhase = 'idle';
+  boss.abilityActive = false;
+  boss.abilityTimer = boss.abilityCooldown;
+  boss.setAuraIntensity(boss.enraged ? 2 : 1);
+}
+
+/**
+ * Builds the translucent ground ring that marks a mole's burrow target.
+ *
+ * @param {number} x World X.
+ * @param {number} y World Y.
+ * @param {number} radius Ring radius in world units.
+ * @returns {THREE.Mesh}
+ */
+function makeDangerMarker(x, y, radius) {
+  const marker = new THREE.Mesh(
+    new THREE.RingGeometry(radius * 0.85, radius, 48),
+    new THREE.MeshBasicMaterial({
+      color: 0xc98cff,
+      transparent: true,
+      opacity: 0.85,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    })
+  );
+  marker.position.set(x, y, 2.5);
+  scene.add(marker);
+  return marker;
+}
+
+/** Adds the burrow warning ring to the scene. */
+function startedBurrowMarker() {
+  clearBurrowMarker();
+  if (!boss || !boss.danger) return;
+  burrowMarker = makeDangerMarker(boss.danger.x, boss.danger.y, boss.danger.radius);
+}
+
+/** Removes the burrow warning ring, if one exists. */
+function clearBurrowMarker() {
+  if (!burrowMarker) return;
+  scene.remove(burrowMarker);
+  burrowMarker.geometry.dispose();
+  burrowMarker.material.dispose();
+  burrowMarker = null;
+}
+
+/**
+ * Builds a venom puddle on the ground.
+ *
+ * @param {number} x World X.
+ * @param {number} y World Y.
+ * @param {number} radius Puddle radius in world units.
+ * @returns {THREE.Mesh}
+ */
+function makeVenomPatch(x, y, radius) {
+  const patch = new THREE.Mesh(
+    new THREE.CircleGeometry(radius, 32),
+    new THREE.MeshBasicMaterial({
+      color: 0x6bdc4a,
+      transparent: true,
+      opacity: 0.42,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    })
+  );
+  patch.position.set(x, y, 2);
+  scene.add(patch);
+  return patch;
+}
+
+/**
+ * Ages the venom puddles and applies their damage to a standing hero.
+ *
+ * Venom is a damage-over-time zone, not an instant hit: a single packet per
+ * puddle would just be contact damage with extra steps. The poison also
+ * lingers for a few seconds after the hero escapes, which is what makes
+ * standing in it a real mistake instead of a scratch.
+ *
+ * @param {number} delta Seconds since the previous frame.
+ */
+function updateVenom(delta) {
+  const defaults = BOSS_ABILITIES.centipede;
+
+  for (let i = venomPools.length - 1; i >= 0; i--) {
+    const pool = venomPools[i];
+    pool.life -= delta;
+
+    // Fade out over the last second so the puddle visibly expires.
+    if (pool.life < 1) {
+      pool.mesh.material.opacity = 0.42 * Math.max(0, pool.life);
+    }
+
+    if (pool.life <= 0) {
+      scene.remove(pool.mesh);
+      pool.mesh.geometry.dispose();
+      pool.mesh.material.dispose();
+      venomPools.splice(i, 1);
+      continue;
+    }
+
+    const inside =
+      Math.hypot(player.position.x - pool.x, player.position.y - pool.y) < pool.radius;
+    if (inside && !safeFromHazards()) {
+      pool.tickTimer -= delta;
+      if (pool.tickTimer <= 0) {
+        pool.tickTimer = pool.tickInterval || defaults.tickInterval;
+        hurtHero(pool.tickDamage || defaults.tickDamage);
+        poison.stacks = Math.min(VENOM_STACK_LIMIT, poison.stacks + 1);
+        poison.timer = pool.poisonDuration || defaults.poisonDuration;
+        poison.tick = pool.poisonInterval || defaults.poisonInterval;
+        // Latch the numbers onto the poison state itself, so lingering ticks
+        // keep working after the puddle (and its caster) are gone.
+        poison.damage = pool.poisonDamage || defaults.poisonDamage;
+        poison.interval = pool.poisonInterval || defaults.poisonInterval;
+      }
+    }
+  }
+
+  // Lingering poison keeps ticking after the hero leaves the puddle.
+  if (poison.timer > 0) {
+    poison.timer -= delta;
+    poison.tick -= delta;
+    if (poison.tick <= 0) {
+      poison.tick = poison.interval || defaults.poisonInterval;
+      hurtHero((poison.damage || defaults.poisonDamage) * poison.stacks);
+    }
+    if (poison.timer <= 0) {
+      poison.stacks = 0;
+      poison.timer = 0;
+    }
+  }
+}
+
+/**
+ * True while the hero is somewhere the boss's ground hazards cannot reach.
+ *
+ * Uses the module-level power-up state rather than the animation loop's
+ * `boosts` local — helpers defined outside the loop cannot see its locals.
+ *
+ * @returns {boolean}
+ */
+function safeFromHazards() {
+  return (
+    powerUps.multipliers.shielded ||
+    health.shielded ||
+    currentHouse ||
+    bushState.active
+  );
+}
+
+spawnEnemy();
 // This avoids the old "procedural frog, then sudden swap" pop at the start.
 const loadingScreen = document.createElement('div');
 loadingScreen.className = 'loading-screen';
@@ -2271,6 +2630,9 @@ window.__hud = {
   /** Pure boss-stat derivation, shared with the constructor. For tests. */
   bossProfile,
 
+  /** Ability cooldown for a given species and boss number. For tests. */
+  bossAbilityCooldown,
+
   /** Spawns a boss right now. Only for arranging a test. */
   forceBoss(species = 'beetle') {
     const angle = Math.random() * Math.PI * 2;
@@ -2290,6 +2652,50 @@ window.__hud = {
     bossBar.style.display = 'block';
     renderBossBar();
     return enemy;
+  },
+
+  /** Fires the live boss's signature ability immediately. For tests. */
+  triggerBossAbility() {
+    if (!boss) return null;
+    boss.abilityTimer = 0;
+    return boss.abilityKey;
+  },
+
+  /**
+   * Brings the hero back after a death, without reloading the page.
+   *
+   * A test that damages the hero often wants to keep measuring afterwards;
+   * reloading loses the whole arranged world, so this restores just enough
+   * state for the loop to keep running.
+   */
+  revive() {
+    // `dead` is derived from `hp`, so restoring the pool is the whole job.
+    health.hp = health.maxHp;
+    health.invulnerable = 0;
+    gameState = 'playing';
+    if (gameOverOverlay) gameOverOverlay.style.display = 'none';
+    return health.hp;
+  },
+
+  /** Live venom puddles, so a test can count them. */
+  get venomPools() {
+    return venomPools;
+  },
+
+  /** Lingering poison state on the hero. */
+  poison,
+
+  /** Applies one damage packet through the full mitigation pipeline. */
+  hurtHero,
+
+  /**
+   * Puts the live boss into its enraged state without waiting for the bar
+   * to drain.
+   */
+  forceEnrage() {
+    if (!boss) return false;
+    boss.hp = Math.min(boss.hp, boss.maxHp * boss.enrageThreshold);
+    return boss.enraged;
   },
 
   /** Closes the boss bar without killing anything. Only for arranging a test. */

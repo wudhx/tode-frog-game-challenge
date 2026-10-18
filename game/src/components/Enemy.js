@@ -13,8 +13,15 @@ export const ENEMY_HOVER = 38;
 export const ELITE_CHANCE = 0.1;
 
 // --- Bosses ---------------------------------------------------------------
-/** Body scale for a boss, relative to its species. */
-export const BOSS_SCALE = 4.5;
+/**
+ * Body scale for a boss, relative to its species.
+ *
+ * A giant has to read as *big* from across the board, and at 4.5x it still
+ * looked like a slightly overweight beetle. 7x puts the smallest giant
+ * (centipede, radius 26) at 182 world units across — roughly two and a half
+ * times the hero — which is unmistakable at a glance.
+ */
+export const BOSS_SCALE = 7;
 /** Health multiplier applied to the species base HP. */
 export const BOSS_HP_MULT = 18;
 /** Extra flat armor for bosses, added on top of the species value. */
@@ -67,6 +74,85 @@ export const BOSS_ENRAGE_MAX = 0.7;
 
 /** Species a boss can take the form of. */
 export const BOSS_SPECIES = ['beetle', 'centipede', 'mole'];
+
+// --- Boss signature abilities ---------------------------------------------
+/**
+ * Each giant owns a move set no ordinary insect has. Abilities are keyed by
+ * species so the three bosses play differently instead of being the same
+ * health bar in three costumes.
+ *
+ * Cooldowns are in seconds and shrink slightly with the boss number (see
+ * `bossAbilityCooldown`), so later giants fire more often.
+ */
+export const BOSS_ABILITIES = {
+  beetle: {
+    key: 'charge',
+    label: 'Horn Charge',
+    /** Telegraphed wind-up before the dash, in seconds. */
+    windup: 0.8,
+    /** Seconds the dash itself lasts. */
+    duration: 0.55,
+    /** Multiplier on the boss's own speed during the dash. */
+    speedMult: 5.5,
+    /** Total ground distance of one dash, in world units. */
+    distance: 620,
+    /** Frames the dash is spread over, so the reach is frame-rate independent. */
+    dashFrames: 22,
+    /** Contact damage multiplier for a body-check during the dash. */
+    damageMult: 2.2,
+    cooldown: 7,
+    color: '#ffb03d',
+  },
+  centipede: {
+    key: 'venom',
+    label: 'Venom Spray',
+    /** How many venom pools one cast scatters. */
+    pools: 3,
+    /** Radius of each pool on the ground plane. */
+    poolRadius: 55,
+    /** Damage per tick while the hero stands in a pool. */
+    tickDamage: 7,
+    /** Seconds between damage ticks. */
+    tickInterval: 0.6,
+    /** Seconds a pool lingers. */
+    life: 6,
+    /** Seconds of poison left after leaving a pool. */
+    poisonDuration: 3,
+    /** Damage per poison tick on the hero. */
+    poisonDamage: 4,
+    /** Seconds between poison ticks. */
+    poisonInterval: 1,
+    cooldown: 8,
+    color: '#7ce86b',
+  },
+  mole: {
+    key: 'burrow',
+    label: 'Burrow Ambush',
+    /** Seconds spent underground, untargetable. */
+    duration: 1.6,
+    /** Ground radius the hero must clear before the boss surfaces. */
+    dangerRadius: 90,
+    /** Contact damage when the boss surfaces on top of the hero. */
+    burstDamage: 34,
+    cooldown: 9,
+    color: '#c98cff',
+  },
+};
+
+/**
+ * Ability cooldown after the boss-number ramp.
+ *
+ * @param {string} speciesKey Which giant is casting.
+ * @param {number} bossIndex Zero-based boss number.
+ * @returns {number} Seconds between casts.
+ */
+export function bossAbilityCooldown(speciesKey, bossIndex = 0) {
+  const ability = BOSS_ABILITIES[speciesKey];
+  if (!ability) return Infinity;
+  // Each later boss shaves a little off, floored so it never spams.
+  return Math.max(ability.cooldown * 0.55, ability.cooldown - bossIndex * 0.6);
+}
+
 
 /**
  * Derives every boss stat from a species and a boss number.
@@ -606,6 +692,26 @@ export class Enemy {
     /** Set once the boss has entered its enraged phase. */
     this.enraged = false;
 
+    /**
+     * Signature ability state (bosses only).
+     *
+     * `abilityKey` is the identifier the main loop switches on. `abilityTimer`
+     * counts down to the next cast; the first cast is deliberately late so
+     * the player gets a few seconds to read the giant before it closes.
+     */
+    this.ability = this.boss ? BOSS_ABILITIES[this.typeKey] || null : null;
+    this.abilityKey = this.ability ? this.ability.key : null;
+    this.abilityCooldown = this.ability
+      ? bossAbilityCooldown(this.typeKey, this.bossIndex)
+      : Infinity;
+    this.abilityTimer = this.abilityCooldown * 0.75;
+    /** True while the ability is telegraphing or resolving. */
+    this.abilityActive = false;
+    /** Seconds left in the current ability phase. */
+    this.abilityPhaseTimer = 0;
+    /** @type {'idle' | 'windup' | 'dash' | 'underground'} */
+    this.abilityPhase = 'idle';
+
     // World-space holder on the ground plane; the body is lifted to hover.
     this.group = new THREE.Group();
     this.group.position.set(spawnPoint.x, spawnPoint.y, 0);
@@ -643,21 +749,50 @@ export class Enemy {
     // Wing-flap phase, randomised so a swarm doesn't beat in lockstep.
     this.flapPhase = Math.random() * Math.PI * 2;
 
-    // Bosses get a slow, glowing halo so they read as a threat at a glance.
+    // Bosses get a ground aura so they read as a threat at a glance.
+    //
+    // The old aura was a torus tilted flat. A torus is a *tube*, so at boss
+    // scale its outer and inner walls cut through the body and the wings,
+    // which is what made the giant look mangled. It was also parented to the
+    // body group, so it tilted with every heading change.
+    //
+    // The replacement is a flat translucent disc that only touches one pixel
+    // row at the silhouette, plus a paper-thin inner ring for definition.
+    // Both sit at ground level on their own object, so nothing intersects.
     if (this.boss) {
-      const halo = new THREE.Mesh(
-        new THREE.TorusGeometry(this.type.radius * this.scale * 1.35, 3, 8, 40),
-        new THREE.MeshStandardMaterial({
+      const radius = this.radius;
+      const aura = new THREE.Mesh(
+        new THREE.RingGeometry(radius * 0.72, radius * 1.02, 64),
+        new THREE.MeshBasicMaterial({
           color: 0xff3d6e,
-          emissive: 0xff2d5e,
-          emissiveIntensity: 1.4,
-          roughness: 0.35,
+          transparent: true,
+          opacity: 0.26,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
         })
       );
-      halo.rotation.x = Math.PI / 2;
-      halo.position.z = 6;
-      this.group.add(halo);
-      this.halo = halo;
+      // Z-up world: a ring is authored in XY, so no rotation is needed.
+      aura.position.z = 1.5;
+      this.group.add(aura);
+      this.halo = aura;
+
+      // A crisp edge line: a thin ring is far more legible than a thick disc
+      // and never clips the body.
+      const rim = new THREE.Mesh(
+        new THREE.RingGeometry(radius * 1.0, radius * 1.06, 64),
+        new THREE.MeshBasicMaterial({
+          color: 0xff8aa5,
+          transparent: true,
+          opacity: 0.7,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        })
+      );
+      rim.position.z = 1.6;
+      this.group.add(rim);
+      this.haloRim = rim;
     }
 
     // Countdown for the "took a hit but survived" swell.
@@ -725,7 +860,14 @@ export class Enemy {
     if (!this.enraged && this.hp <= this.maxHp * this.enrageThreshold) {
       this.enraged = true;
       this.speed *= BOSS_ENRAGE_SPEED;
-      if (this.halo) this.halo.material.emissiveIntensity = 2.6;
+      this.setAuraIntensity(2);
+    }
+
+    // Signature ability cooldown. The caller polls `abilityReady` and drives
+    // the actual cast, because each ability needs the world (player, scene,
+    // obstacles) and this class deliberately owns none of it.
+    if (this.abilityKey) {
+      this.abilityTimer -= delta;
     }
 
     this.summonTimer -= delta;
@@ -734,6 +876,17 @@ export class Enemy {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Burns the aura hotter as the fight escalates.
+   *
+   * @param {number} level 1 = calm, 2 = enraged, 3 = mid-cast telegraph.
+   */
+  setAuraIntensity(level) {
+    if (!this.halo) return;
+    this.halo.material.opacity = [0.26, 0.46, 0.62][Math.min(2, level - 1)];
+    if (this.haloRim) this.haloRim.material.opacity = [0.7, 0.95, 1][Math.min(2, level - 1)];
   }
 
   setBaseSpeed(baseSpeed) {
@@ -771,12 +924,17 @@ export class Enemy {
     }
 
     // A brief swell makes a non-fatal hit legible.
+    //
+    // The swell has to be relative to `this.scale`, not to 1: resetting to 1
+    // used to shrink a boss back to the size of an ordinary insect the frame
+    // after its first hit landed. That is why giants looked small in play
+    // even though the spawn-time scale was correct.
     if (this.hitFlash > 0) {
       this.hitFlash = Math.max(0, this.hitFlash - delta);
       const t = this.hitFlash / 0.25;
-      this.visual.scale.setScalar(1 + 0.35 * t);
-    } else if (this.visual.scale.x !== 1) {
-      this.visual.scale.setScalar(1);
+      this.visual.scale.setScalar(this.scale * (1 + 0.35 * t));
+    } else if (this.visual.scale.x !== this.scale) {
+      this.visual.scale.setScalar(this.scale);
     }
   }
 
