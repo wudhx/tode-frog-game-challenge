@@ -2,11 +2,9 @@
 
 **A frog. A meadow. An endless swarm.**
 
-You are a frog with a tongue that never stops firing. Insects come from every direction,
-you hold one key and everything in front of you dies — and every kill makes you a little
-harder to kill. Then the game starts asking you to make choices.
-
-A run lasts eight to fifteen minutes. You will not survive the first few.
+Tode has one attack: a tongue that fires in a circle around him. Insects arrive from every
+direction, and every one you kill raises your maximum health — so the health bar is also the
+level bar. Every minute the game offers a choice that shapes the rest of the run.
 
 > Submission for the **JetBrains Academy "Build Your Game Challenge"** — October 2026
 
@@ -22,91 +20,50 @@ No install, no download, no account. Runs in desktop Chrome, Edge, Firefox and S
 
 ## How a run goes
 
-**You start with 100 HP and nothing else.** No shop, no upgrade screen, no meta-progression
-carried between runs. Everything you become, you become inside this run.
+You begin with 100 HP and no upgrades. Nothing carries over from the previous run.
 
-**1. You hop, and the tongue fires.** Arrow keys move; `Space` fires. Holding `Space` keeps
-firing while you hop, so movement and damage are never in conflict — the only real decision
-is *where you are standing* when the blast lands. The blast hits a circle around you, so
-positioning is the whole skill.
+**The tongue is your only attack.** Arrow keys hop; `Space` fires. Holding `Space` keeps it
+firing while you move, so attacking and repositioning never compete for your hands. The
+blast covers a circle centred on Tode, so the only real decision is where to stand: close
+enough to clear the swarm, not so close that contact damage lands first.
 
-**2. Every kill makes you permanently tougher.** Kills raise your maximum HP, and your
-maximum HP is your level. There is no separate XP bar: the health bar *is* the progression
-curve. Fifteen levels, each one paid for in insects.
+**Every kill raises your maximum health.** Maximum health *is* your level, so the health bar
+is the progression curve — fifteen levels, each one paid for in insects. There is no separate
+experience bar and no upgrade screen.
 
-**3. Every sixty seconds, pick one of three talents.** You have four talent slots, filled
-across a run. Each talent keeps growing on its own as your level rises — a talent taken at
-minute two is still getting stronger at minute twelve. That is why the draft matters more
-than it looks: you are not picking a bonus, you are picking something that will scale.
+**Every sixty seconds, take one of three talents.** Four slots, filled over a run. A talent's
+rank is not fixed when you pick it: it is derived from your current level (1, 2, 3, 5, 7), so
+the one you choose at minute two keeps improving at minute twelve.
 
-**4. Genes drop from what you kill.** Pick one up and it locks into your build for the rest
-of the run and stacks forever. Collect three of the same quality and they merge into the
-next tier. Six species, three qualities — a reason to hunt one kind of insect instead of
-whatever is closest.
+**Genes drop from what you kill.** Taking one commits it to the run and stacks it. There are
+six species, each in three qualities; three of the same quality merge into the next tier.
 
-**5. Then something enormous arrives.** Every few hundred points, a boss. A stag beetle
-that charges in a straight line, a centipede that leaves the ground toxic behind it, a mole
-that burrows and surfaces under your feet. Each one punishes a different habit, and none of
-them can be answered the same way twice.
+**Score also banks awakening charges.** Every 1,500 points fills one, up to three. `E` spends
+one for ten seconds of triple damage, 65% less damage taken, longer reach and faster hops.
 
-**6. You die, you see your score and your best run, and you go again.**
+**Bosses arrive on a score schedule** — the first at 2,000 points, then every 3,000 after
+that. A stag beetle charges in a straight line, a centipede leaves toxic ground behind it, a
+mole burrows and surfaces under your feet. Each one punishes a different habit.
 
----
+**The pressure never stops rising.** Spawn rate, insect speed, your cooldown and your reach
+all scale with your score, and the insects are tuned to scale slightly faster than you do.
 
-## The two things that make it a build game
-
-**Nothing is stored that can disagree with itself.** Talent ranks are not saved anywhere —
-they are derived from your hero level every time they are read. The panel, the draft cards
-and the damage math all call the same function, so a talent cannot show one number and
-apply another.
-
-**Your build is the run.** There is no way to buy power before you start. A strong run is
-one where you read the draft well and committed to a direction — and losing that build when
-you die is the point, not a punishment.
+**When the health bar empties, the run is over.** You see your score and your best run, then
+start again.
 
 ---
 
 ## Screens
 
-<table>
-<tr>
-<td width="50%"><a href="https://raw.githubusercontent.com/wudhx/tode-talent-awakening/main/docs/screenshots/talent-offer.png"><img src="docs/screenshots/talent-offer.png" alt="Talent offer — three cards, pick one"></a><br><sub><b>The talent draft.</b> Three cards, one pick, every minute. Each shows the rank you would get right now and the hero level that buys the next one.</sub></td>
-<td width="50%"><a href="https://raw.githubusercontent.com/wudhx/tode-talent-awakening/main/docs/screenshots/character-panel.png"><img src="docs/screenshots/character-panel.png" alt="Character panel — every stat with its sources"></a><br><sub><b>The stat sheet.</b> Every number is shown with the sources that produced it — base, levels, genes, talents, bosses, awakening.</sub></td>
-</tr>
-</table>
+**The talent draft.** Three cards, one pick, every minute. Each card shows the rank you
+would get right now, and the hero level that unlocks the next one.
 
----
+<a href="https://raw.githubusercontent.com/wudhx/tode-talent-awakening/main/docs/screenshots/talent-offer.png"><img src="docs/screenshots/talent-offer.png" width="700" alt="Talent draft — three cards, pick one"></a>
 
-## Where the course ended, and where this goes
+**The stat sheet.** Every number with the sources that produced it — base, levels, genes,
+talents, boss kills, awakening.
 
-The course build is a clean little loop: hop, blast, score, difficulty, one hit and you are
-out. It is finished, and it is tiny.
-
-Everything below was added on top of it, in roughly the order it appears in a run:
-
-| | Course build | This |
-|---|---|---|
-| **Death** | One hit ends the run | 100 HP, and every kill raises the ceiling |
-| **Progression** | Score goes up | 15 levels, each one earned by kills |
-| **Build** | None | 16 talents drafted 4 at a time, ranks rising with your level |
-| **Permanence** | None | 6 gene species × 3 qualities, locked in and merging 3-into-1 |
-| **Power spike** | None | A 3-charge awakening you spend when it matters |
-| **Threats** | One insect type | Six species, plus three bosses with their own mechanics |
-| **Information** | A score | A stat sheet that names the source of every number |
-
----
-
-## Systems
-
-| System | What it does |
-|---|---|
-| **Hero levels** | 15 levels, 100 HP each. Kills raise max HP by 2.5, so the level curve *is* your health bar. |
-| **Tongue blast** | Short-range area attack. Hold `Space` to keep firing — movement never interrupts it. |
-| **Awakening** | Score feeds a bank of up to **3 charges** (1500 points each). `E` spends one: 3× attack, 65% less damage taken, wider reach, faster hops, for 10 seconds. |
-| **Talents** | 16 talents, 4 slots, one offer every 60 seconds. Ranks are **driven by your hero level** (thresholds 1 / 2 / 3 / 5 / 7), so a talent you take at minute two keeps growing on its own. |
-| **Genes** | 6 species × 3 qualities. Orbs drop from kills; picking one locks it for the run and stacks forever. Three of the same quality merge into the next tier. |
-| **Bosses** | Every few hundred points a giant arrives, with a signature move: the stag beetle's horn charge, the centipede's lingering venom pools, the mole's burrow ambush. |
-| **Dynamic difficulty** | Spawn rate, enemy speed, your cooldown and reach all scale with score. Enemies are tuned to scale slightly *faster* than you. |
+<a href="https://raw.githubusercontent.com/wudhx/tode-talent-awakening/main/docs/screenshots/character-panel.png"><img src="docs/screenshots/character-panel.png" width="300" alt="Character panel — every stat with its sources"></a>
 
 ---
 
