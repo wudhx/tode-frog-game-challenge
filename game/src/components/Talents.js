@@ -14,11 +14,11 @@
  * A talent is not a flat number, but levelling it by re-picking the same card
  * meant a full build needed the same offer five times: fifteen minutes of
  * waiting for one talent, in a run that lasts about that long in total. So
- * ranks are driven by the hero's level instead — every
- * `TALENT_HERO_LEVELS_PER_LEVEL` hero levels raises *every* talent one rank.
+ * ranks are driven by the hero's level instead — the levels in
+ * `TALENT_RANK_LEVELS` raise *every* talent one rank:
  *
- *     hero level  1  2 | 3  4 | 5  6 | 7  8 | 9+
- *     talent rank 1  1 | 2  2 | 3  3 | 4  4 | 5
+ *     hero level  1 | 2 | 3 | 4 | 5  6 | 7+
+ *     talent rank 1 | 2 | 3 | 3 | 4   4 | 5
  *
  * The upshot: picking a talent is a one-time decision about *what* you want,
  * and the game handles *how strong* it gets. That also means an offer never
@@ -29,7 +29,7 @@
  */
 
 /** Seconds between talent offers. */
-export const TALENT_INTERVAL = 75;
+export const TALENT_INTERVAL = 60;
 /** How many talents a single run may hold. */
 export const TALENT_SLOTS = 4;
 /** How many talents the Lucky talent adds on top of that. */
@@ -41,13 +41,21 @@ export const TALENT_POOL_SIZE = 16;
 /** Highest level a single talent can reach. */
 export const TALENT_MAX_LEVEL = 5;
 /**
- * Hero levels needed to raise every talent by one rank.
+ * Hero levels at which each talent rank unlocks.
  *
- * Two keeps the fifth rank reachable at hero level 9, which a run hits in
- * roughly six minutes — early enough that the build is finished while the
- * player still has a fight left to use it in.
+ * Measured pacing drove this table, not round numbers. A standing-still hero
+ * killing everything in range reaches hero level 6 in five minutes, and the
+ * earlier "one rank every two levels" table therefore put the final rank at
+ * hero 9 — eight to eleven minutes in, which is longer than the whole run is
+ * meant to last.
+ *
+ * These steps front-load the first three ranks (levels 1, 2, 3) so a new
+ * talent immediately feels like it is growing, then slow down: rank 4 waits
+ * for hero 5 and rank 5 for hero 7, which lands around the six-minute mark.
+ * By then the fourth talent card has also arrived (four offers, sixty
+ * seconds apart), so the build is complete while there is still a fight left.
  */
-export const TALENT_HERO_LEVELS_PER_LEVEL = 2;
+export const TALENT_RANK_LEVELS = [1, 2, 3, 5, 7];
 
 /**
  * Every talent in the pool.
@@ -222,15 +230,19 @@ export function talentMaxLevel(talent) {
  * @returns {number} 1-based rank.
  */
 export function talentLevelFor(heroLevel, talent) {
-  const step = Math.floor((Math.max(1, heroLevel) - 1) / TALENT_HERO_LEVELS_PER_LEVEL) + 1;
+  const level = Math.max(1, heroLevel || 1);
+  let rank = 1;
+  for (let i = 0; i < TALENT_RANK_LEVELS.length; i++) {
+    if (level >= TALENT_RANK_LEVELS[i]) rank = i + 1;
+  }
   const cap = talent ? talentMaxLevel(talent) : TALENT_MAX_LEVEL;
-  return Math.min(cap, Math.max(1, step));
+  return Math.min(cap, rank);
 }
 
 /**
  * Hero level at which a talent reaches the next rank, or null when maxed.
  *
- * Used by the panel to print "Lv.4 at hero 7" instead of leaving the player
+ * Used by the panel to print "Rank 4 at hero 5" instead of leaving the player
  * to guess when the next bump lands.
  *
  * @param {number} heroLevel Current hero level.
@@ -240,8 +252,8 @@ export function talentLevelFor(heroLevel, talent) {
 export function nextTalentRankLevel(heroLevel, talent) {
   const current = talentLevelFor(heroLevel, talent);
   if (current >= talentMaxLevel(talent)) return null;
-  // Rank n+1 starts at hero level n * 2 + 1, so rank 2 lands on hero 3.
-  return current * TALENT_HERO_LEVELS_PER_LEVEL + 1;
+  // The next rank's threshold sits at index `current` in the table.
+  return TALENT_RANK_LEVELS[current];
 }
 
 /**

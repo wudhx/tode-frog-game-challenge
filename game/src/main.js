@@ -24,7 +24,7 @@ import {
   TalentSystem,
   TALENT_INTERVAL,
   TALENT_SLOTS,
-  TALENT_HERO_LEVELS_PER_LEVEL,
+  TALENT_RANK_LEVELS,
   TALENTS,
   talentEffectAt,
   talentMaxLevel,
