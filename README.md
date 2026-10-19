@@ -1,48 +1,68 @@
-# Frog: Talent Awakening
+# Tode: Talent Awakening
 
-**A frog. A meadow. An endless swarm — and every sixty seconds, a choice you carry for
-the rest of the run.**
+**A frog. A meadow. An endless swarm.**
 
-Frog: Talent Awakening takes the hop-and-shoot game from the course and turns it into a
-survival RPG with a build you assemble while you fight. Levels are your health bar,
-talents grow on their own, genes merge three-into-one, and three bosses each punish a
-different habit. Runs last minutes. The builds last in your head.
+You are a frog with a tongue that never stops firing. Insects come from every direction,
+you hold one key and everything in front of you dies — and every kill makes you a little
+harder to kill. Then the game starts asking you to make choices.
+
+A run lasts eight to fifteen minutes. You will not survive the first few.
 
 > Submission for the **JetBrains Academy "Build Your Game Challenge"** — October 2026
 
 ### ▶ Play in your browser
 
-## **[wudhx.github.io/tode-frog-game-challenge](https://wudhx.github.io/tode-frog-game-challenge/)**
+## **[wudhx.github.io/tode-talent-awakening](https://wudhx.github.io/tode-talent-awakening/)**
 
 No install, no download, no account. Runs in desktop Chrome, Edge, Firefox and Safari.
 
-<a href="https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/trailer.mp4"><img src="docs/screenshots/trailer-poster.jpg" width="760" alt="Click to play the 20-second trailer"></a>
-
-**[▶ 20-second trailer](https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/trailer.mp4)** — click the picture, or the link, to watch. A full run: tongue firing, an awakening charge going off, and the first boss arriving.
-
-<a href="https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/screenshots/gameplay.png"><img src="docs/screenshots/gameplay.png" width="760" alt="Gameplay — the frog mid-run, tongue firing into the swarm"></a>
+<a href="https://raw.githubusercontent.com/wudhx/tode-talent-awakening/main/docs/screenshots/gameplay.png"><img src="docs/screenshots/gameplay.png" width="760" alt="Gameplay — the frog mid-run, tongue firing into the swarm"></a>
 
 ---
 
-## What you actually do
+## How a run goes
 
-You hold one button. The tongue fires into everything in front of you, and it never
-stops. That is the whole control scheme — everything else is a decision about *where*
-you are standing when it fires.
+**You start with 100 HP and nothing else.** No shop, no upgrade screen, no meta-progression
+carried between runs. Everything you become, you become inside this run.
 
-- **Everything you kill makes you tougher.** Each kill raises your max HP, so your level
-  and your health bar are the same thing. There is no separate upgrade screen.
-- **Every minute, the game offers you three talents and you take one.** Four slots, filled
-  over a run. Each one keeps getting stronger as you level, automatically — a talent you
-  take at minute two is still growing at minute twelve.
-- **Genes drop from what you kill.** Pick one and it locks into your build for the rest of
-  the run. Collect three of the same quality and they merge into the next tier: six
-  species, three qualities, and a reason to keep killing one kind of insect.
-- **Then something enormous arrives.** A stag beetle that charges on a straight line, a
-  centipede that leaves the ground toxic behind it, a mole that burrows and surfaces under
-  your feet. Each one asks a question you cannot answer the same way twice.
+**1. You hop, and the tongue fires.** Arrow keys move; `Space` fires. Holding `Space` keeps
+firing while you hop, so movement and damage are never in conflict — the only real decision
+is *where you are standing* when the blast lands. The blast hits a circle around you, so
+positioning is the whole skill.
 
-You die, you see your score and your best run, and you go again.
+**2. Every kill makes you permanently tougher.** Kills raise your maximum HP, and your
+maximum HP is your level. There is no separate XP bar: the health bar *is* the progression
+curve. Fifteen levels, each one paid for in insects.
+
+**3. Every sixty seconds, pick one of three talents.** You have four talent slots, filled
+across a run. Each talent keeps growing on its own as your level rises — a talent taken at
+minute two is still getting stronger at minute twelve. That is why the draft matters more
+than it looks: you are not picking a bonus, you are picking something that will scale.
+
+**4. Genes drop from what you kill.** Pick one up and it locks into your build for the rest
+of the run and stacks forever. Collect three of the same quality and they merge into the
+next tier. Six species, three qualities — a reason to hunt one kind of insect instead of
+whatever is closest.
+
+**5. Then something enormous arrives.** Every few hundred points, a boss. A stag beetle
+that charges in a straight line, a centipede that leaves the ground toxic behind it, a mole
+that burrows and surfaces under your feet. Each one punishes a different habit, and none of
+them can be answered the same way twice.
+
+**6. You die, you see your score and your best run, and you go again.**
+
+---
+
+## The two things that make it a build game
+
+**Nothing is stored that can disagree with itself.** Talent ranks are not saved anywhere —
+they are derived from your hero level every time they are read. The panel, the draft cards
+and the damage math all call the same function, so a talent cannot show one number and
+apply another.
+
+**Your build is the run.** There is no way to buy power before you start. A strong run is
+one where you read the draft well and committed to a direction — and losing that build when
+you die is the point, not a punishment.
 
 ---
 
@@ -50,8 +70,8 @@ You die, you see your score and your best run, and you go again.
 
 <table>
 <tr>
-<td width="50%"><a href="https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/screenshots/talent-offer.png"><img src="docs/screenshots/talent-offer.png" alt="Talent offer — three cards, pick one"></a><br><sub><b>The talent draft.</b> Three cards, one pick, every minute. Each shows the rank you would get right now and the hero level that buys the next one.</sub></td>
-<td width="50%"><a href="https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/screenshots/character-panel.png"><img src="docs/screenshots/character-panel.png" alt="Character panel — every stat with its sources"></a><br><sub><b>The stat sheet.</b> Every number is shown with the sources that produced it — base, levels, genes, talents, bosses, awakening.</sub></td>
+<td width="50%"><a href="https://raw.githubusercontent.com/wudhx/tode-talent-awakening/main/docs/screenshots/talent-offer.png"><img src="docs/screenshots/talent-offer.png" alt="Talent offer — three cards, pick one"></a><br><sub><b>The talent draft.</b> Three cards, one pick, every minute. Each shows the rank you would get right now and the hero level that buys the next one.</sub></td>
+<td width="50%"><a href="https://raw.githubusercontent.com/wudhx/tode-talent-awakening/main/docs/screenshots/character-panel.png"><img src="docs/screenshots/character-panel.png" alt="Character panel — every stat with its sources"></a><br><sub><b>The stat sheet.</b> Every number is shown with the sources that produced it — base, levels, genes, talents, bosses, awakening.</sub></td>
 </tr>
 </table>
 
@@ -59,8 +79,8 @@ You die, you see your score and your best run, and you go again.
 
 ## Where the course ended, and where this goes
 
-The course build is a clean little loop: hop, blast, score, difficulty, one hit and you
-are out. It is finished, and it is tiny.
+The course build is a clean little loop: hop, blast, score, difficulty, one hit and you are
+out. It is finished, and it is tiny.
 
 Everything below was added on top of it, in roughly the order it appears in a run:
 
@@ -73,9 +93,6 @@ Everything below was added on top of it, in roughly the order it appears in a ru
 | **Power spike** | None | A 3-charge awakening you spend when it matters |
 | **Threats** | One insect type | Six species, plus three bosses with their own mechanics |
 | **Information** | A score | A stat sheet that names the source of every number |
-
-The through-line is that nothing is handed to you. There is no shop, no upgrade menu, no
-meta-progression — the build *is* the run, and losing it is the point.
 
 ---
 

@@ -1007,9 +1007,14 @@ export class Enemy {
   /**
    * True once the insect has been disengaged long enough to clean up.
    *
+   * A boss is never retired this way: it is the encounter, not part of the
+   * swarm, and it has to be killed to end. Disengaging is a scare effect for
+   * ordinary insects.
+   *
    * @returns {boolean}
    */
   get readyToRemove() {
+    if (this.boss) return false;
     return this.state === 'disengaged' && this.disengageTimer >= 4;
   }
 

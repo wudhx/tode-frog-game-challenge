@@ -1652,6 +1652,11 @@ function triggerPondBonus() {
     sound.heal();
   } else if (roll < 0.7) {
     for (const enemy of enemies) {
+      // A boss is not part of the swarm that a pond can shoo away. Letting it
+      // flee put it on the disengage path, which retires the insect after four
+      // seconds — the boss mesh vanished mid-fight while the bar stayed up and
+      // the spawner stayed paused.
+      if (enemy.boss) continue;
       enemy.fleeFrom(player.position.x, player.position.y);
     }
     hud.showAction('Pond repels the swarm!', 'pond', '#4da6ff');
@@ -2465,6 +2470,15 @@ function gameLoop() {
   enemies = enemies.filter((enemy) => {
     if (enemy.readyToRemove) {
       enemy.dispose();
+      // If whatever just left the board was the boss, the reference has to go
+      // with it. A dangling pointer kept the bar on screen, kept the ordinary
+      // spawner paused behind `if (!boss)`, and made the next boss threshold
+      // unreachable for the rest of the run.
+      if (boss === enemy) {
+        boss = null;
+        renderBossBar();
+        bossBar.style.display = 'none';
+      }
       return false;
     }
     return true;

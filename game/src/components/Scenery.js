@@ -354,6 +354,15 @@ function buildPond(rand) {
   const group = new THREE.Group();
   const radius = 110 + rand() * 60;
 
+  // One squash factor for every layer.
+  //
+  // Each disc used to roll its own aspect ratio, so the shore, the seabed and
+  // the water surface were three differently-shaped ellipses stacked on top of
+  // each other. The water then spilled past the sand on one axis and left a
+  // wide bare crescent on the other, which is what read as "the water is
+  // crooked". A pond is one body of water; it gets one shape.
+  const squash = 0.78 + rand() * 0.18;
+
   // --- Shore: noisy circle, not a perfect disc.
   const shoreSegments = 40;
   const shoreGeom = new THREE.CircleGeometry(radius * 1.18, shoreSegments);
@@ -368,20 +377,20 @@ function buildPond(rand) {
   }
   shorePos.needsUpdate = true;
   const shore = new THREE.Mesh(shoreGeom, SHORE_MATERIAL);
-  shore.scale.y = 0.78 + rand() * 0.18;
+  shore.scale.y = squash;
   shore.position.z = 0.6;
   group.add(shore);
 
   // --- Dark seabed peeks under the surface for depth.
   const seabed = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.97, 32),
     new THREE.MeshStandardMaterial({ color: 0x1a3a5a, roughness: 0.95 }));
-  seabed.scale.y = 0.78 + rand() * 0.18;
+  seabed.scale.y = squash;
   seabed.position.z = 1.4;
   group.add(seabed);
 
   // --- Water surface: low-roughness, slightly metallic for a glassy read.
   const water = new THREE.Mesh(new THREE.CircleGeometry(radius, 40), WATER_MATERIAL);
-  water.scale.y = 0.78 + rand() * 0.18;
+  water.scale.y = squash;
   water.position.z = 2.4;
   group.add(water);
 
@@ -394,7 +403,7 @@ function buildPond(rand) {
     const angle = rand() * Math.PI * 2;
     const dist = radius * 1.05 + rand() * 18;
     standUp(tuft, (rand() - 0.5) * 0.3, (rand() - 0.5) * 0.3);
-    tuft.position.set(Math.cos(angle) * dist, Math.sin(angle) * dist, 4);
+    tuft.position.set(Math.cos(angle) * dist, Math.sin(angle) * dist * squash, 4);
     group.add(tuft);
   }
 
@@ -406,8 +415,10 @@ function buildPond(rand) {
     );
     standUp(reed, (rand() - 0.5) * 0.2, (rand() - 0.5) * 0.2);
     const angle = rand() * Math.PI * 2;
-    const dist = radius * 0.55 + rand() * (radius * 0.3);
-    reed.position.set(Math.cos(angle) * dist, Math.sin(angle) * dist, 14);
+    // Kept well inside the surface radius: reeds placed on the un-squashed
+    // circle ended up standing on the sand once the water was flattened.
+    const dist = radius * 0.45 + rand() * (radius * 0.2);
+    reed.position.set(Math.cos(angle) * dist, Math.sin(angle) * dist * squash, 14);
     group.add(reed);
   }
 
