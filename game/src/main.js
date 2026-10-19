@@ -1155,6 +1155,24 @@ function resetGame() {
   bossBonus.attack = 0;
   bossBonus.defense = 0;
   renderBossBar();
+
+  // Hazards a boss left behind belong to the run that created them. Without
+  // this, dying in a venom puddle and pressing Space respawned the frog
+  // standing in that same puddle, and the new run started taking damage from
+  // the old one's venom. The burrow ring had the same problem: a mole that
+  // killed the hero mid-burrow left its warning circle on the board.
+  for (const pool of venomPools) {
+    scene.remove(pool.mesh);
+    pool.mesh.geometry.dispose();
+    pool.mesh.material.dispose();
+  }
+  venomPools.length = 0;
+  poison.stacks = 0;
+  poison.timer = 0;
+  poison.tick = 0;
+  poison.damage = 0;
+  clearBurrowMarker();
+
   runTime = 0;
   paused = false;
   geneCard.style.display = 'none';
