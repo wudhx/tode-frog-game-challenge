@@ -10,7 +10,7 @@
 
 No install, no download — it runs on desktop Chrome, Edge, Firefox and Safari.
 
-<img src="docs/screenshots/gameplay.png" width="620" alt="Gameplay">
+<a href="https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/screenshots/gameplay.png"><img src="docs/screenshots/gameplay.png" width="620" alt="Gameplay"></a>
 
 ---
 
@@ -39,7 +39,7 @@ score, so the game is always leaning on you. You die, you see your score, you go
 | **Shield** | Buffer worth 15–43% of max HP. Refills only out of combat: 4s untouched, then 12%/s. |
 | **Dynamic difficulty** | Spawn rate, enemy speed, your cooldown and reach all scale with score. Enemies are tuned to scale slightly *faster* than you. |
 
-<img src="docs/screenshots/character-panel.png" width="360" alt="Character panel">
+<a href="https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/screenshots/character-panel.png"><img src="docs/screenshots/character-panel.png" width="360" alt="Character panel"></a>
 
 *The character panel is the game's stat sheet: every number is shown with the sources
 that produced it — base, levels, genes, talents, boss kills, awakening.*
@@ -61,7 +61,7 @@ that produced it — base, levels, genes, talents, boss kills, awakening.*
 | `P` / `Esc` | Pause |
 | `M` | Mute |
 
-<img src="docs/screenshots/talent-offer.png" width="460" alt="Talent offer">
+<a href="https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/screenshots/talent-offer.png"><img src="docs/screenshots/talent-offer.png" width="460" alt="Talent offer"></a>
 
 *Talent cards show the rank you would get right now, and the hero level that buys the next one.*
 
