@@ -106,10 +106,10 @@ tangent along the trunk and slides; if both tangents are blocked it flips; after
 seconds of no progress it is moved to the nearest verified-clear spot. The board is also
 generated with a minimum gap between trees, so the trap is rare in the first place.
 
-**The whole thing is tested.** 179 Playwright checks run against the real build in a
+**The whole thing is tested.** 190 Playwright checks run against the real build in a
 headless browser — level curve, talent mapping, damage ceiling, boss abilities, shield
-regeneration, collision, UI contracts, and a check that twelve insects spawned in a ring
-all actually move.
+regeneration, pond geometry, collision, UI contracts, and a check that twelve insects
+spawned in a ring all actually move.
 
 ---
 
