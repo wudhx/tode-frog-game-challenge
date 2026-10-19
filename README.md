@@ -10,7 +10,7 @@ level bar. Every minute the game offers a choice that shapes the rest of the gam
 
 ### ▶ Play in your browser
 
-## **[wudhx.github.io/tode-talent-awakening](https://wudhx.github.io/tode-talent-awakening/)**
+## **[https://wudhx.github.io/tode-talent-awakening](https://wudhx.github.io/tode-talent-awakening/)**
 
 No install, no download, no account. Runs in desktop Chrome, Edge, Firefox and Safari.
 
