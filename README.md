@@ -1,6 +1,9 @@
 # Tode the Frog
 
-**A 3D survival arena where a frog with a very long tongue takes on an endless insect swarm.**
+**One frog. One tongue. Fifteen levels of insects that want him dead.**
+
+A 3D survival RPG in the browser. The tongue never stops firing, every kill makes you
+tougher, and every boss asks a question you have to answer differently.
 
 > Submission for the **JetBrains Academy "Build Your Game Challenge"** — October 2026
 
@@ -16,13 +19,15 @@ No install, no download — it runs on desktop Chrome, Edge, Firefox and Safari.
 
 ## What this is
 
-The course gives you a frog, a board and a few insects. This is what grew out of it: a
-run-based survival game with a level curve, a talent draft, a gene economy, and three
-bosses that each demand a different answer.
+The course gives you a frog, a board and a few insects. This is what grew out of it.
 
-You start at 100 HP and level up by killing things. Every level makes you hit harder and
-take less; every few levels your talents get stronger too. The swarm scales with your
-score, so the game is always leaning on you. You die, you see your score, you go again.
+You start at 100 HP and level up by killing things — so the level curve *is* your health
+bar. Each level makes you hit harder and take less. Every minute the game offers you a
+talent; each one keeps growing on its own as you level. Genes drop from kills, lock into
+your build, and merge three-into-one when you collect a matching set. And every few
+hundred points, something enormous arrives with a move you have to read.
+
+You die, you see your score, you go again.
 
 ---
 
