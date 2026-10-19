@@ -1,33 +1,79 @@
-# Tode: Tongue of the Swarm
+# Frog: Talent Awakening
 
-**One frog. One tongue. Fifteen levels of insects that want him dead.**
+**A frog. A meadow. An endless swarm — and every sixty seconds, a choice you carry for
+the rest of the run.**
 
-A 3D survival RPG in the browser. The tongue never stops firing, every kill makes you
-tougher, and every boss asks a question you have to answer differently.
+Frog: Talent Awakening takes the hop-and-shoot game from the course and turns it into a
+survival RPG with a build you assemble while you fight. Levels are your health bar,
+talents grow on their own, genes merge three-into-one, and three bosses each punish a
+different habit. Runs last minutes. The builds last in your head.
 
 > Submission for the **JetBrains Academy "Build Your Game Challenge"** — October 2026
 
 ### ▶ Play in your browser
 
-**https://wudhx.github.io/tode-frog-game-challenge/**
+## **[wudhx.github.io/tode-frog-game-challenge](https://wudhx.github.io/tode-frog-game-challenge/)**
 
-No install, no download — it runs on desktop Chrome, Edge, Firefox and Safari.
+No install, no download, no account. Runs in desktop Chrome, Edge, Firefox and Safari.
 
-<a href="https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/screenshots/gameplay.png"><img src="docs/screenshots/gameplay.png" width="620" alt="Gameplay"></a>
+<a href="https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/screenshots/gameplay.png"><img src="docs/screenshots/gameplay.png" width="760" alt="Gameplay — the frog mid-run, tongue firing into the swarm"></a>
+
+**[Watch the 20-second trailer](docs/trailer.md)** — a full run compressed into one glance.
 
 ---
 
-## What this is
+## What you actually do
 
-The course gives you a frog, a board and a few insects. This is what grew out of it.
+You hold one button. The tongue fires into everything in front of you, and it never
+stops. That is the whole control scheme — everything else is a decision about *where*
+you are standing when it fires.
 
-You start at 100 HP and level up by killing things — so the level curve *is* your health
-bar. Each level makes you hit harder and take less. Every minute the game offers you a
-talent; each one keeps growing on its own as you level. Genes drop from kills, lock into
-your build, and merge three-into-one when you collect a matching set. And every few
-hundred points, something enormous arrives with a move you have to read.
+- **Everything you kill makes you tougher.** Each kill raises your max HP, so your level
+  and your health bar are the same thing. There is no separate upgrade screen.
+- **Every minute, the game offers you three talents and you take one.** Four slots, filled
+  over a run. Each one keeps getting stronger as you level, automatically — a talent you
+  take at minute two is still growing at minute twelve.
+- **Genes drop from what you kill.** Pick one and it locks into your build for the rest of
+  the run. Collect three of the same quality and they merge into the next tier: six
+  species, three qualities, and a reason to keep killing one kind of insect.
+- **Then something enormous arrives.** A stag beetle that charges on a straight line, a
+  centipede that leaves the ground toxic behind it, a mole that burrows and surfaces under
+  your feet. Each one asks a question you cannot answer the same way twice.
 
-You die, you see your score, you go again.
+You die, you see your score and your best run, and you go again.
+
+---
+
+## Screens
+
+<table>
+<tr>
+<td width="50%"><a href="https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/screenshots/talent-offer.png"><img src="docs/screenshots/talent-offer.png" alt="Talent offer — three cards, pick one"></a><br><sub><b>The talent draft.</b> Three cards, one pick, every minute. Each shows the rank you would get right now and the hero level that buys the next one.</sub></td>
+<td width="50%"><a href="https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/screenshots/character-panel.png"><img src="docs/screenshots/character-panel.png" alt="Character panel — every stat with its sources"></a><br><sub><b>The stat sheet.</b> Every number is shown with the sources that produced it — base, levels, genes, talents, bosses, awakening.</sub></td>
+</tr>
+</table>
+
+---
+
+## Where the course ended, and where this goes
+
+The course build is a clean little loop: hop, blast, score, difficulty, one hit and you
+are out. It is finished, and it is tiny.
+
+Everything below was added on top of it, in roughly the order it appears in a run:
+
+| | Course build | This |
+|---|---|---|
+| **Death** | One hit ends the run | 100 HP, and every kill raises the ceiling |
+| **Progression** | Score goes up | 15 levels, each one earned by kills |
+| **Build** | None | 16 talents drafted 4 at a time, ranks rising with your level |
+| **Permanence** | None | 6 gene species × 3 qualities, locked in and merging 3-into-1 |
+| **Power spike** | None | A 3-charge awakening you spend when it matters |
+| **Threats** | One insect type | Six species, plus three bosses with their own mechanics |
+| **Information** | A score | A stat sheet that names the source of every number |
+
+The through-line is that nothing is handed to you. There is no shop, no upgrade menu, no
+meta-progression — the build *is* the run, and losing it is the point.
 
 ---
 
@@ -42,11 +88,6 @@ You die, you see your score, you go again.
 | **Genes** | 6 species × 3 qualities. Orbs drop from kills; picking one locks it for the run and stacks forever. Three of the same quality merge into the next tier. |
 | **Bosses** | Every few hundred points a giant arrives, with a signature move: the stag beetle's horn charge, the centipede's lingering venom pools, the mole's burrow ambush. |
 | **Dynamic difficulty** | Spawn rate, enemy speed, your cooldown and reach all scale with score. Enemies are tuned to scale slightly *faster* than you. |
-
-<a href="https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/screenshots/character-panel.png"><img src="docs/screenshots/character-panel.png" width="360" alt="Character panel"></a>
-
-*The character panel is the game's stat sheet: every number is shown with the sources
-that produced it — base, levels, genes, talents, boss kills, awakening.*
 
 ---
 
@@ -64,10 +105,6 @@ that produced it — base, levels, genes, talents, boss kills, awakening.*
 | `C` | Character panel |
 | `P` / `Esc` | Pause |
 | `M` | Mute |
-
-<a href="https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/screenshots/talent-offer.png"><img src="docs/screenshots/talent-offer.png" width="460" alt="Talent offer"></a>
-
-*Talent cards show the rank you would get right now, and the hero level that buys the next one.*
 
 ---
 
