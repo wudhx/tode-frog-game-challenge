@@ -14,7 +14,7 @@ level bar. Every minute the game offers a choice that shapes the rest of the gam
 
 No install, no download, no account. Runs in desktop Chrome, Edge, Firefox and Safari.
 
-<a href="https://raw.githubusercontent.com/wudhx/tode-talent-awakening/main/docs/screenshots/gameplay.png"><img src="docs/screenshots/gameplay.png" width="760" alt="Gameplay — the frog in the middle of a game, tongue firing into the swarm"></a>
+<a href="https://cdn.jsdelivr.net/gh/wudhx/tode-talent-awakening@main/docs/screenshots/gameplay.png"><img src="https://cdn.jsdelivr.net/gh/wudhx/tode-talent-awakening@main/docs/screenshots/gameplay.png" width="760" alt="Gameplay — the frog in the middle of a game, tongue firing into the swarm"></a>
 
 ---
 
@@ -59,12 +59,26 @@ then start again.
 **The talent draft.** Three cards, one pick, every minute. Each card shows the rank you
 would get right now, and the hero level that unlocks the next one.
 
-<a href="https://raw.githubusercontent.com/wudhx/tode-talent-awakening/main/docs/screenshots/talent-offer.png"><img src="docs/screenshots/talent-offer.png" width="700" alt="Talent draft — three cards, pick one"></a>
+<a href="https://cdn.jsdelivr.net/gh/wudhx/tode-talent-awakening@main/docs/screenshots/talent-offer.png"><img src="https://cdn.jsdelivr.net/gh/wudhx/tode-talent-awakening@main/docs/screenshots/talent-offer.png" width="700" alt="Talent draft — three cards, pick one"></a>
 
 **The stat sheet.** Every number with the sources that produced it — base, levels, genes,
 talents, boss kills, awakening.
 
-<a href="https://raw.githubusercontent.com/wudhx/tode-talent-awakening/main/docs/screenshots/character-panel.png"><img src="docs/screenshots/character-panel.png" width="300" alt="Character panel — every stat with its sources"></a>
+<a href="https://cdn.jsdelivr.net/gh/wudhx/tode-talent-awakening@main/docs/screenshots/character-panel.png"><img src="https://cdn.jsdelivr.net/gh/wudhx/tode-talent-awakening@main/docs/screenshots/character-panel.png" width="300" alt="Character panel — every stat with its sources"></a>
+
+---
+
+## Systems
+
+| System | What it does |
+|---|---|
+| **Hero levels** | 15 levels, 100 HP each. Every kill raises maximum HP by 2.5, so the level curve is the health bar. |
+| **Tongue blast** | Short-range area attack. Hold `Space` to keep attacking; movement never interrupts it. |
+| **Awakening** | Score fills a bank of up to 3 charges (1,500 points each). `E` spends one for 10 seconds of 3× damage, 65% less damage taken, +60% reach and +30% hop speed. |
+| **Talents** | 16 talents, 4 slots, one offer every 60 seconds. Rank is driven by hero level (thresholds 1 / 2 / 3 / 5 / 7), so a talent keeps improving after you take it. |
+| **Genes** | 6 species × 3 qualities. Orbs drop from kills; taking one locks it in for the game and stacks it. Three of the same quality merge into the next tier. |
+| **Bosses** | The first at 2,000 points, then every 3,000 after that. Each has a signature move: horn charge, venom pools, burrow ambush. |
+| **Dynamic difficulty** | Spawn rate, insect speed, your cooldown and your reach all scale with score. Insects scale slightly faster than you do. |
 
 ---
 
@@ -73,7 +87,7 @@ talents, boss kills, awakening.
 | Key | Action |
 |---|---|
 | `↑ ↓ ← →` | Hop |
-| `Space` | Tongue blast (hold to keep firing) |
+| `Space` | Tongue blast (hold to keep attacking) |
 | `E` | Awakening — spends one banked charge |
 | `1` `2` `3` | Pick a talent card |
 | `Esc` | Decline the talent offer |
