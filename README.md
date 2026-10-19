@@ -4,7 +4,7 @@
 
 Tode has one attack: a tongue that fires in a circle around him. Insects arrive from every
 direction, and every one you kill raises your maximum health — so the health bar is also the
-level bar. Every minute the game offers a choice that shapes the rest of the run.
+level bar. Every minute the game offers a choice that shapes the rest of the game.
 
 > Submission for the **JetBrains Academy "Build Your Game Challenge"** — October 2026
 
@@ -14,32 +14,33 @@ level bar. Every minute the game offers a choice that shapes the rest of the run
 
 No install, no download, no account. Runs in desktop Chrome, Edge, Firefox and Safari.
 
-<a href="https://raw.githubusercontent.com/wudhx/tode-talent-awakening/main/docs/screenshots/gameplay.png"><img src="docs/screenshots/gameplay.png" width="760" alt="Gameplay — the frog mid-run, tongue firing into the swarm"></a>
+<a href="https://raw.githubusercontent.com/wudhx/tode-talent-awakening/main/docs/screenshots/gameplay.png"><img src="docs/screenshots/gameplay.png" width="760" alt="Gameplay — the frog in the middle of a game, tongue firing into the swarm"></a>
 
 ---
 
-## How a run goes
+## How a game plays out
 
-You begin with 100 HP and no upgrades. Nothing carries over from the previous run.
+You begin with 100 HP and no upgrades. Nothing carries over from the previous game.
 
-**The tongue is your only attack.** Arrow keys hop; `Space` fires. Holding `Space` keeps it
-firing while you move, so attacking and repositioning never compete for your hands. The
-blast covers a circle centred on Tode, so the only real decision is where to stand: close
-enough to clear the swarm, not so close that contact damage lands first.
+**The tongue is your only attack.** Arrow keys hop; `Space` attacks. Holding `Space` keeps
+attacking while you move, so you never have to stop to deal damage. The blast covers a circle
+centred on Tode, so the only real decision is where to stand: close enough to clear the
+swarm, not so close that contact damage lands first.
 
 **Every kill raises your maximum health.** Maximum health *is* your level, so the health bar
 is the progression curve — fifteen levels, each one paid for in insects. There is no separate
 experience bar and no upgrade screen.
 
-**Every sixty seconds, take one of three talents.** Four slots, filled over a run. A talent's
+**Every sixty seconds, take one of three talents.** Four slots, filled over a game. A talent's
 rank is not fixed when you pick it: it is derived from your current level (1, 2, 3, 5, 7), so
 the one you choose at minute two keeps improving at minute twelve.
 
-**Genes drop from what you kill.** Taking one commits it to the run and stacks it. There are
+**Genes drop from what you kill.** Taking one commits it to the game and stacks it. There are
 six species, each in three qualities; three of the same quality merge into the next tier.
 
-**Score also banks awakening charges.** Every 1,500 points fills one, up to three. `E` spends
-one for ten seconds of triple damage, 65% less damage taken, longer reach and faster hops.
+**Score also charges the awakening bar.** Every 1,500 points adds one charge, up to three.
+`E` spends one for ten seconds of triple damage, 65% less damage taken, longer reach and
+faster hops.
 
 **Bosses arrive on a score schedule** — the first at 2,000 points, then every 3,000 after
 that. A stag beetle charges in a straight line, a centipede leaves toxic ground behind it, a
@@ -48,8 +49,8 @@ mole burrows and surfaces under your feet. Each one punishes a different habit.
 **The pressure never stops rising.** Spawn rate, insect speed, your cooldown and your reach
 all scale with your score, and the insects are tuned to scale slightly faster than you do.
 
-**When the health bar empties, the run is over.** You see your score and your best run, then
-start again.
+**When the health bar empties, the game is over.** You see your score and your best score,
+then start again.
 
 ---
 
@@ -143,7 +144,7 @@ game/
         ├── Camera.js        follows the hero, keeps the world upright
         ├── Renderer.js      WebGL setup
         ├── Sound.js         WebAudio cues, no audio files
-        └── HighScores.js    local best runs
+        └── HighScores.js    local best scores
 ```
 
 Roughly 10,400 lines of JavaScript, no framework, no game engine.
