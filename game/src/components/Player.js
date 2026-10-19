@@ -83,7 +83,7 @@ export const JUMP_DISTANCE = 70;
 const MIN_MOVE_DURATION = 0.1;
 
 /**
- * The Player is a THREE.Group that hosts the Tode the Frog model.
+ * The Player is a THREE.Group that hosts Tode's model.
  *
  * The group is what the game logic moves around in world space, while the
  * inner model keeps its own orientation offsets (needed because the GLB was

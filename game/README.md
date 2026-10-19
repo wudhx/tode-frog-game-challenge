@@ -1,8 +1,8 @@
-# Tode the Frog — 3D Browser Survival Game
+# Tode: Tongue of the Swarm
 
 > Submission for the **JetBrains Academy "Build Your Game Challenge"** (October 2026)
 
-A 3D survival game built with **Three.js**. Guide Tode the Frog across a checkerboard meadow: hop to dodge a swarm of insects, unleash an area-of-effect tongue blast to clear a path, grab power-ups, and survive as long as you can for a higher score.
+A 3D survival RPG built with **Three.js**. Guide Tode across a checkerboard meadow: hop to dodge the swarm, keep the tongue blast firing, level up until your health bar is the level curve, draft talents, merge genes, and take on three bosses that each demand a different answer.
 
 **▶ Play online:** https://wudhx.github.io/tode-frog-game-challenge/
 

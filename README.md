@@ -1,4 +1,4 @@
-# Tode the Frog
+# Tode: Tongue of the Swarm
 
 **One frog. One tongue. Fifteen levels of insects that want him dead.**
 
