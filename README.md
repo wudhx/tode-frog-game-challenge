@@ -16,9 +16,11 @@ different habit. Runs last minutes. The builds last in your head.
 
 No install, no download, no account. Runs in desktop Chrome, Edge, Firefox and Safari.
 
-<a href="https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/screenshots/gameplay.png"><img src="docs/screenshots/gameplay.png" width="760" alt="Gameplay — the frog mid-run, tongue firing into the swarm"></a>
+<a href="https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/trailer.mp4"><img src="docs/screenshots/trailer-poster.jpg" width="760" alt="Click to play the 20-second trailer"></a>
 
-**[Watch the 20-second trailer](docs/trailer.md)** — a full run compressed into one glance.
+**[▶ 20-second trailer](https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/trailer.mp4)** — click the picture, or the link, to watch. A full run: tongue firing, an awakening charge going off, and the first boss arriving.
+
+<a href="https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/screenshots/gameplay.png"><img src="docs/screenshots/gameplay.png" width="760" alt="Gameplay — the frog mid-run, tongue firing into the swarm"></a>
 
 ---
 
