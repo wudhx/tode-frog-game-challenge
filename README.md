@@ -4,11 +4,13 @@
 
 > Submission for the **JetBrains Academy "Build Your Game Challenge"** — October 2026
 
-### ▶ [Play it in your browser](https://wudhx.github.io/tode-frog-game-challenge/)
+### ▶ Play in your browser
+
+**https://wudhx.github.io/tode-frog-game-challenge/**
 
 No install, no download — it runs on desktop Chrome, Edge, Firefox and Safari.
 
-![Gameplay](docs/screenshots/gameplay.png)
+<img src="docs/screenshots/gameplay.png" width="620" alt="Gameplay">
 
 ---
 
@@ -34,10 +36,10 @@ score, so the game is always leaning on you. You die, you see your score, you go
 | **Talents** | 16 talents, 4 slots, one offer every 60 seconds. Ranks are **driven by your hero level** (thresholds 1 / 2 / 3 / 5 / 7), so a talent you take at minute two keeps growing on its own. |
 | **Genes** | 6 species × 3 qualities. Orbs drop from kills; picking one locks it for the run and stacks forever. Three of the same quality merge into the next tier. |
 | **Bosses** | Every few hundred points a giant arrives, with a signature move: the stag beetle's horn charge, the centipede's lingering venom pools, the mole's burrow ambush. |
-| **Shield** | A talent-granted buffer worth 15–43% of max HP. It does not refill on its own during a fight — stay untouched for 4 seconds and it rebuilds at 12% per second. |
+| **Shield** | Buffer worth 15–43% of max HP. Refills only out of combat: 4s untouched, then 12%/s. |
 | **Dynamic difficulty** | Spawn rate, enemy speed, your cooldown and reach all scale with score. Enemies are tuned to scale slightly *faster* than you. |
 
-![Character panel](docs/screenshots/character-panel.png)
+<img src="docs/screenshots/character-panel.png" width="360" alt="Character panel">
 
 *The character panel is the game's stat sheet: every number is shown with the sources
 that produced it — base, levels, genes, talents, boss kills, awakening.*
@@ -59,7 +61,7 @@ that produced it — base, levels, genes, talents, boss kills, awakening.*
 | `P` / `Esc` | Pause |
 | `M` | Mute |
 
-![Talent offer](docs/screenshots/talent-offer.png)
+<img src="docs/screenshots/talent-offer.png" width="460" alt="Talent offer">
 
 *Talent cards show the rank you would get right now, and the hero level that buys the next one.*
 
