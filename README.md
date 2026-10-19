@@ -36,7 +36,6 @@ score, so the game is always leaning on you. You die, you see your score, you go
 | **Talents** | 16 talents, 4 slots, one offer every 60 seconds. Ranks are **driven by your hero level** (thresholds 1 / 2 / 3 / 5 / 7), so a talent you take at minute two keeps growing on its own. |
 | **Genes** | 6 species × 3 qualities. Orbs drop from kills; picking one locks it for the run and stacks forever. Three of the same quality merge into the next tier. |
 | **Bosses** | Every few hundred points a giant arrives, with a signature move: the stag beetle's horn charge, the centipede's lingering venom pools, the mole's burrow ambush. |
-| **Shield** | Buffer worth 15–43% of max HP. Refills only out of combat: 4s untouched, then 12%/s. |
 | **Dynamic difficulty** | Spawn rate, enemy speed, your cooldown and reach all scale with score. Enemies are tuned to scale slightly *faster* than you. |
 
 <a href="https://raw.githubusercontent.com/wudhx/tode-frog-game-challenge/main/docs/screenshots/character-panel.png"><img src="docs/screenshots/character-panel.png" width="360" alt="Character panel"></a>
