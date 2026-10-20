@@ -10,7 +10,7 @@
 // ---------------------------------------------------------------------------
 // Base (starting) values — imported piecemeal by the systems that own them.
 // ---------------------------------------------------------------------------
-export const BASE_ENEMY_SPAWN_DELAY = 3;
+export const BASE_ENEMY_SPAWN_DELAY = 2;
 /**
  * Raised from the original 30 to keep the pace right on the much larger
  * board: insects now have roughly twice as far to travel before they reach
@@ -24,8 +24,14 @@ export const BASE_ATTACK_RADIUS = 120;
 // ---------------------------------------------------------------------------
 // Growth rates
 // ---------------------------------------------------------------------------
-/** How aggressively difficulty ramps with score. Higher = harsher. */
-export const GROWTH_RATE = 0.02;
+/**
+ * How aggressively difficulty ramps with score. Higher = harsher.
+ *
+ * The old 0.02 hit the factor cap at score 150 — roughly twenty seconds in —
+ * so the entire difficulty curve was over before the first talent. At 0.0012
+ * the cap (12) arrives around score 9000, which is a long, contested run.
+ */
+export const GROWTH_RATE = 0.0012;
 
 /** Enemy multipliers per unit of difficulty (scale faster). */
 const ENEMY_SPAWN_RATE = 0.6;
@@ -40,9 +46,13 @@ const PLAYER_ATTACK_RANGE_RATE = 0.2;
 // Arithmetic helpers
 // ---------------------------------------------------------------------------
 /** Never let a delay collapse to zero. */
-const MIN_DELAY = 0.35;
-/** Cap the difficulty factor so late game stays playable. */
-const MAX_FACTOR = 4;
+const MIN_DELAY = 0.22;
+/**
+ * Cap the difficulty factor so late game stays playable. Twelve means enemies
+ * move ~9x their base speed and spawn roughly every 0.26s by the end, but the
+ * hero's own scaling still keeps him ahead of them.
+ */
+const MAX_FACTOR = 12;
 
 /**
  * Computes the current difficulty multiplier from the score.

@@ -40,6 +40,7 @@ import {
 } from './components/Awakening.js';
 import { scaledParameters } from './components/Difficulty.js';
 import { hud } from './components/Interactables.js';
+import { Juice } from './components/Juice.js';
 import './style.css';
 
 // ---------------------------------------------------------------------------
@@ -49,6 +50,11 @@ import './style.css';
 const PLAYER_HIT_DISTANCE = 45;
 /** Enemy vs. enemy: how close two insects may get. */
 const ENEMY_HIT_DISTANCE = 45;
+/**
+ * Hard ceiling on live insects. The spawner stops when the board is full, so
+ * a player who kites instead of killing cannot melt the frame budget.
+ */
+const MAX_ENEMIES = 48;
 
 /** Maximum HP gained per kill — this is what drives the level curve.
  *
@@ -267,6 +273,8 @@ addHouses(map.housesGroup).then((placed) => {
 // ---------------------------------------------------------------------------
 const player = new Player(scene);
 const camera = createCamera(player.group);
+/** Hit-stop, shake, particles, floating score and the combo counter. */
+const juice = new Juice(scene, camera);
 
 const score = new Score();
 const health = new Health();
@@ -432,6 +440,7 @@ renderAwakenBar();
 /** Spends a charge and turns the boost on. */
 function triggerAwakening() {
   if (!awakening.activate()) return;
+  juice.onAwaken();
   sound.awaken();
   hud.showAction(
     `Awakening — ${AWAKEN_DURATION}s of triple damage`,
@@ -1091,6 +1100,7 @@ function showGameOver() {
   player.controlsEnabled = false;
   player.stop();
   attack.enabled = false;
+  juice.reset();
 
   sound.gameOver();
   if (result.isBest) sound.newBest(1.1);
@@ -1115,6 +1125,7 @@ function resetGame() {
   attack.enabled = true;
   attack.reset();
   powerUps.reset();
+  juice.reset();
 
   // Reset interaction state.
   bushState.active = false;
@@ -1275,6 +1286,7 @@ function spawnBoss() {
   bossesSpawned += 1;
   bossBar.style.display = 'block';
   renderBossBar();
+  juice.onBossSpawn();
   sound.awaken();
   hud.showAction(
     `A giant ${enemy.type.label} appears!`,
@@ -1687,7 +1699,7 @@ const _dir = new THREE.Vector2();
 const _target = new THREE.Vector2();
 
 function gameLoop() {
-  const delta = Math.min(clock.getDelta(), 0.1);
+  const frameDelta = Math.min(clock.getDelta(), 0.1);
 
   if (gameState === 'game-over') {
     renderer.render(scene, camera);
@@ -1699,6 +1711,12 @@ function gameLoop() {
     renderer.render(scene, camera);
     return;
   }
+
+  // Feedback effects run on real time; the world runs on the hit-stop-scaled
+  // delta, so a kill can freeze the simulation for a few frames while the
+  // particles still fly.
+  juice.update(frameDelta);
+  const delta = frameDelta * juice.timeScale;
 
   runTime += delta;
 
@@ -2213,6 +2231,9 @@ function gameLoop() {
         // Damage actually dealt (armour + remaining HP both matter).
         const dealt = Math.min(power * (1 - enemy.armor), Math.max(0, enemy.hp));
         const killed = enemy.takeHit(power);
+        // A boss that survives is the one impact the player can feel; ordinary
+        // insects die too fast for a hit reaction to render.
+        if (!killed && enemy.boss) juice.onBossHit(enemy.position);
 
         // Mosquito genes return a share of the damage as HP.
         if (playerStats.lifesteal > 0 && dealt > 0) {
@@ -2223,10 +2244,12 @@ function gameLoop() {
 
       if (destroyed.length > 0) {
         destroyed.forEach((enemy) => {
-          enemy.dispose();
           // The Scavenger talent scales every kill reward; bosses carry their
           // own much larger point value.
           const points = Math.round((enemy.points || enemy.type.points) * (1 + talentStats.scoreMult));
+          // Feedback before disposal so the burst starts at the body.
+          juice.onKill(enemy.position, points, enemy.boss);
+          enemy.dispose();
           score.addKillPoints(points);
           // Those same points charge the awakening bar.
           if (awakening.addScore(points)) {
@@ -2311,7 +2334,17 @@ function gameLoop() {
 
   spawnTimer -= delta;
   if (spawnTimer <= 0) {
-    if (!boss) spawnEnemy(params.enemySpeed);
+    if (!boss && enemies.length < MAX_ENEMIES) {
+      spawnEnemy(params.enemySpeed);
+
+      // Past factor 4 the insects stop arriving one at a time: a second (and
+      // from factor 8, sometimes a third) joins the same wave, so the board
+      // reads as a swarm rather than a queue.
+      const extra = params.factor >= 8 ? 2 : params.factor >= 4 ? 1 : 0;
+      for (let i = 0; i < extra && enemies.length < MAX_ENEMIES; i++) {
+        if (Math.random() < 0.5) spawnEnemy(params.enemySpeed);
+      }
+    }
     spawnTimer = params.enemySpawnDelay;
   }
 
@@ -2319,6 +2352,7 @@ function gameLoop() {
   if (boss) {
     if (boss.tickBoss(delta)) {
       for (let i = 0; i < BOSS_SUMMON_COUNT; i++) {
+        if (enemies.length >= MAX_ENEMIES) break;
         const minion = spawnEnemy(params.enemySpeed);
         if (minion) {
           // Minions join the fight at once, so they appear on a ring around
@@ -2590,6 +2624,7 @@ function hurtHero(raw, options = {}) {
 
   if (damage > 0.01) {
     health.takeHit(damage);
+    juice.onHurt(damage);
     sound.hurt();
     // Taking real damage counts as being in combat even when the shield was
     // already empty, otherwise the bar would rebuild mid-fight.
