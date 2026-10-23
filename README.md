@@ -121,10 +121,11 @@ tangent along the trunk and slides; if both tangents are blocked it flips; after
 seconds of no progress it is moved to the nearest verified-clear spot. The board is also
 generated with a minimum gap between trees, so the trap is rare in the first place.
 
-**The whole thing is tested.** 190 Playwright checks run against the real build in a
-headless browser — level curve, talent mapping, damage ceiling, boss abilities, shield
-regeneration, pond geometry, collision, UI contracts, and a check that twelve insects
-spawned in a ring all actually move.
+**The build was exercised with Playwright during development.** A smoke suite covered the
+level curve, talent mapping, damage ceiling, boss abilities, shield regeneration, pond
+geometry, collision, UI contracts, and a check that twelve insects spawned in a ring all
+move. The suite lives in the author's development workspace and is not shipped in this
+repository.
 
 ---
 
@@ -135,7 +136,7 @@ game/
 ├── index.html
 ├── vite.config.js
 ├── public/
-│   ├── models/            tode / enemy / small_house (GLB)
+│   ├── models/            tode / small_house (GLB)
 │   └── tode.svg
 └── src/
     ├── main.js            scene assembly, game loop, UI wiring   (~3.1k lines)
@@ -193,8 +194,11 @@ to GitHub Pages.
 
 | Asset | Author | License | Source |
 |---|---|---|---|
-| `enemy.glb` — Armabee Evolved | Quaternius | Public Domain (CC0) | [Poly Pizza](https://poly.pizza/m/GcttdvsqsQ) |
-| `small_house.glb` — Small House | Jarlan Perez | CC-BY 4.0 | [Poly Pizza](https://poly.pizza/m/053kskrV4U_) |
+| `small_house.glb` — "Small House" | Jarlan Perez | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [Poly Pizza](https://poly.pizza/m/053kskrV4U_) |
+
+The house model was converted from OBJ to glTF and is scaled in-engine; otherwise it is
+unmodified. Full attribution, license notes and third-party software credits are in
+[`CREDITS.md`](CREDITS.md).
 
 No other third-party art, fonts, music or sound recordings are used. Every sound in the
 game is synthesised at runtime with the Web Audio API — there are no audio files in the
@@ -216,4 +220,7 @@ code was written in collaboration with these agents.
 
 MIT — see [`LICENSE`](LICENSE). The license text and copyright notice belong to the
 course scaffold; the game code in `game/` is the author's work built on top of it.
+
+See [`CREDITS.md`](CREDITS.md) for asset attribution. The MIT license covers the code;
+third-party assets remain under their own licenses.
 

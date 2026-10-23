@@ -422,6 +422,8 @@ canvas.game {
 .pause-box {
   width: 420px;
   max-width: 90vw;
+  max-height: 88vh;
+  overflow-y: auto;
   padding: 24px 28px;
   border-radius: 20px;
   background: #ffffff;
@@ -527,6 +529,22 @@ canvas.game {
 
 .pause-control span {
   color: #33563a;
+}
+
+.pause-credits {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #33563a;
+}
+
+.pause-credits p {
+  margin: 0 0 4px;
+}
+
+.pause-credits a {
+  color: #2f6b2a;
+  text-decoration: underline;
 }
 
 .pause-foot {
