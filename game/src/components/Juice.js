@@ -35,6 +35,11 @@ export class Juice {
     this.hitstopTimer = 0;
     this.hitstopScale = 1;
 
+    // --- FOV punch --------------------------------------------------------
+    /** Rest field of view; a kick subtracts from this and decays back. */
+    this.baseFov = camera.fov;
+    this.fovKick = 0;
+
     // --- Shake state ------------------------------------------------------
     /** 0..1, squared before use so small hits stay subtle. */
     this.trauma = 0;
@@ -54,6 +59,8 @@ export class Juice {
     this._rand = Math.random;
 
     this._buildParticles();
+    this._buildSplats();
+    this._buildChunks();
     this._buildDom();
   }
 
@@ -67,15 +74,21 @@ export class Juice {
    * @param {THREE.Vector3} position World position of the body.
    * @param {number} points Score awarded.
    * @param {boolean} [isBoss]
+   * @param {number} [color] Species colour for the burst, stain and chunks.
    */
-  onKill(position, points, isBoss = false) {
+  onKill(position, points, isBoss = false, color = 0xfff0a8) {
     const size = isBoss ? 60 : 12 + Math.min(14, this.combo * 2);
 
-    this.burst(position.x, position.y, size, isBoss ? 0xffb347 : 0xfff0a8, {
+    this.burst(position.x, position.y, size, color, {
       speed: isBoss ? 320 : 190,
       spread: 0.6,
       z: 22,
     });
+
+    // A dark stain on the board and a handful of solid chunks give the kill
+    // weight that an additive sparkle alone cannot.
+    this.splat(position.x, position.y, color, isBoss);
+    this.gibs(position.x, position.y, color, isBoss);
 
     this.popup(`+${points}`, position.x, position.y, isBoss ? '#ffd166' : '#fff6cf', isBoss ? 1.5 : 1);
 
@@ -88,6 +101,39 @@ export class Juice {
     // Short and non-stacking: at 2+ kills a second a long freeze reads as lag.
     this.hitstop(isBoss ? 0.16 : 0.038, isBoss ? 0.02 : 0.05);
     this.addTrauma(isBoss ? 0.8 : 0.18 + Math.min(0.25, this.combo * 0.015));
+    this.fovKick = Math.max(this.fovKick, isBoss ? 1.1 : 0.3);
+  }
+
+  /**
+   * An insect survived a hit (beetles, moles and bosses).
+   *
+   * @param {THREE.Vector3} position
+   * @param {boolean} [isBoss]
+   */
+  onHit(position, isBoss = false) {
+    this.burst(position.x, position.y, isBoss ? 7 : 3, 0xffd08a, {
+      speed: 95,
+      spread: 1.1,
+      z: 35,
+    });
+    this.addTrauma(isBoss ? 0.1 : 0.03);
+    this.hitstop(0.022, isBoss ? 0.15 : 0.3);
+    if (isBoss) this.fovKick = Math.max(this.fovKick, 0.5);
+  }
+
+  /**
+   * The tongue was fired. Called once per shot, whether or not it connects.
+   *
+   * @param {THREE.Vector3} position Hero position.
+   * @param {number} angle Facing angle in radians.
+   * @param {number} [reach] Live attack radius.
+   */
+  onAttack(position, angle, reach = 120) {
+    const x = position.x + Math.cos(angle) * reach;
+    const y = position.y + Math.sin(angle) * reach;
+    this.burst(x, y, 10, 0xff9fb2, { speed: 150, spread: 0.9, z: 24 });
+    this.addTrauma(0.07);
+    this.fovKick = Math.max(this.fovKick, 0.45);
   }
 
   /**
@@ -139,10 +185,21 @@ export class Juice {
     this.trauma = 0;
     this.hitstopTimer = 0;
     this.timeScale = 1;
+    this.fovKick = 0;
     // A run that ended mid-shake must not leave the camera parked off-centre.
     this.camera.position.copy(this.cameraBase);
+    this.camera.fov = this.baseFov;
+    this.camera.updateProjectionMatrix();
     this.hideCombo();
     for (const p of this._particles) p.life = 0;
+    for (const s of this._splats) {
+      s.life = 0;
+      s.mesh.visible = false;
+    }
+    for (const c of this._chunks) {
+      c.life = 0;
+      c.mesh.visible = false;
+    }
     for (const pop of this._popups) {
       pop.life = 0;
       pop.el.style.display = 'none';
@@ -172,7 +229,10 @@ export class Juice {
     }
 
     this._updateShake(delta);
+    this._updateFov(delta);
     this._updateParticles(delta);
+    this._updateSplats(delta);
+    this._updateChunks(delta);
     this._updatePopups(delta);
     this._updateFlash(delta);
   }
@@ -217,6 +277,22 @@ export class Juice {
       this.cameraBase.y + oy,
       this.cameraBase.z + oz
     );
+  }
+
+  /**
+   * A short zoom-in on every attack and kill. The FOV moves more than the
+   * camera does, so the punch reads without making the board swim.
+   */
+  _updateFov(delta) {
+    if (this.fovKick > 0) {
+      this.fovKick = Math.max(0, this.fovKick - delta * 4.5);
+    }
+
+    const fov = this.baseFov - this.fovKick * 4;
+    if (Math.abs(this.camera.fov - fov) > 0.01) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
+    }
   }
 
   /**
@@ -346,6 +422,155 @@ export class Juice {
     if (dirty) {
       this.points.geometry.attributes.position.needsUpdate = true;
       this.points.geometry.attributes.color.needsUpdate = true;
+    }
+  }
+
+  // =========================================================================
+  // Splats and solid chunks
+  // =========================================================================
+
+  _buildSplats() {
+    this._splats = [];
+    this._splatCursor = 0;
+    const geometry = new THREE.CircleGeometry(1, 18);
+
+    for (let i = 0; i < 14; i++) {
+      const material = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.5,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.z = 0.9;
+      mesh.renderOrder = 2;
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this._splats.push({ mesh, life: 0, maxLife: 1, grow: 0.6 });
+    }
+  }
+
+  /**
+   * Leaves a fading stain under a kill.
+   *
+   * @param {number} x
+   * @param {number} y
+   * @param {number} color
+   * @param {boolean} [isBoss]
+   */
+  splat(x, y, color, isBoss = false) {
+    const s = this._splats[this._splatCursor];
+    this._splatCursor = (this._splatCursor + 1) % this._splats.length;
+
+    s.mesh.position.set(x, y, 0.9);
+    s.mesh.rotation.z = this._rand() * Math.PI * 2;
+    s.mesh.scale.setScalar((isBoss ? 34 : 14) * (0.7 + this._rand() * 0.6));
+    s.mesh.material.color.setHex(color);
+    s.mesh.material.opacity = 0.48;
+    s.mesh.visible = true;
+    s.life = s.maxLife = isBoss ? 1.4 : 0.95;
+    s.grow = isBoss ? 0.55 : 0.9;
+  }
+
+  _updateSplats(delta) {
+    for (const s of this._splats) {
+      if (s.life <= 0) continue;
+
+      s.life -= delta;
+      if (s.life <= 0) {
+        s.mesh.visible = false;
+        continue;
+      }
+
+      s.mesh.material.opacity = 0.48 * (s.life / s.maxLife);
+      s.mesh.scale.multiplyScalar(1 + s.grow * delta);
+    }
+  }
+
+  _buildChunks() {
+    this._chunks = [];
+    this._chunkCursor = 0;
+    const geometry = new THREE.TetrahedronGeometry(1, 0);
+
+    for (let i = 0; i < 24; i++) {
+      const material = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 1,
+        depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.renderOrder = 3;
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this._chunks.push({ mesh, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 1 });
+    }
+  }
+
+  /**
+   * Throws a few solid chunks with gravity. The points system already throws
+   * sparks; these are what make the body feel like it came apart.
+   *
+   * @param {number} x
+   * @param {number} y
+   * @param {number} color
+   * @param {boolean} [isBoss]
+   */
+  gibs(x, y, color, isBoss = false) {
+    const count = isBoss ? 14 : 5;
+
+    for (let i = 0; i < count; i++) {
+      const c = this._chunks[this._chunkCursor];
+      this._chunkCursor = (this._chunkCursor + 1) % this._chunks.length;
+
+      const angle = this._rand() * Math.PI * 2;
+      const speed = 55 + this._rand() * 110;
+      const scale = (isBoss ? 6 : 3.5) * (0.7 + this._rand() * 0.7);
+
+      c.mesh.position.set(
+        x + (this._rand() - 0.5) * 12,
+        y + (this._rand() - 0.5) * 12,
+        18 + this._rand() * 14
+      );
+      c.mesh.rotation.set(this._rand() * Math.PI, this._rand() * Math.PI, this._rand() * Math.PI);
+      c.mesh.scale.setScalar(scale);
+      c.mesh.material.color.setHex(color);
+      c.mesh.material.opacity = 1;
+      c.mesh.visible = true;
+
+      c.vx = Math.cos(angle) * speed;
+      c.vy = Math.sin(angle) * speed;
+      c.vz = 110 + this._rand() * 190;
+      c.life = c.maxLife = 0.7 + this._rand() * 0.45;
+    }
+  }
+
+  _updateChunks(delta) {
+    for (const c of this._chunks) {
+      if (c.life <= 0) continue;
+
+      c.life -= delta;
+      if (c.life <= 0) {
+        c.mesh.visible = false;
+        continue;
+      }
+
+      c.vz -= 760 * delta;
+      c.mesh.position.x += c.vx * delta;
+      c.mesh.position.y += c.vy * delta;
+      c.mesh.position.z += c.vz * delta;
+
+      if (c.mesh.position.z < 2) {
+        c.mesh.position.z = 2;
+        c.vz *= -0.32;
+        c.vx *= 0.62;
+        c.vy *= 0.62;
+      }
+
+      c.mesh.rotation.x += delta * 9;
+      c.mesh.rotation.y += delta * 7;
+      c.mesh.material.opacity = Math.min(1, c.life / 0.25);
     }
   }
 

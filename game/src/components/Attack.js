@@ -8,18 +8,38 @@ import { sound } from './Sound.js';
 export const ATTACK_COOLDOWN = 1;
 /** How far the attack reaches, in world units. */
 export const ATTACK_RADIUS = 120;
-/** How long the visual ring stays on screen, in seconds. */
-export const ATTACK_VISUAL_DURATION = 0.25;
+/** How long the tongue lash stays on screen, in seconds. */
+export const ATTACK_VISUAL_DURATION = 0.3;
+
+/** Geometry is authored at this length; the live radius scales it. */
+const BASE_LENGTH = ATTACK_RADIUS;
+/** Thickness of the tongue at rest, in world units. */
+const TONGUE_RADIUS = 4.5;
+/** Radius of the tip bulb. */
+const TONGUE_TIP_RADIUS = 7;
+/** Height of the tongue root above the frog's feet. */
+const TONGUE_Z = 18;
+
+/** Fast start, soft finish. */
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+/** Slow start, fast finish. */
+function easeInCubic(t) {
+  return t * t * t;
+}
 
 /**
- * Implements the player's area-of-effect attack.
+ * Implements the player's area-of-effect tongue attack.
  *
- * Pressing Space triggers a short-lived yellow ring around the player. Any
- * enemy caught inside the radius is reported back to the caller for removal.
+ * Pressing Space whips a pink tongue out from Tode's mouth. The damage is
+ * still a radial check around the hero, so a lash that sweeps past an insect
+ * on any side kills it; a thin ring on the ground communicates that radius.
  */
 export class Attack {
   /**
-   * @param {THREE.Scene} scene The scene to attach the effect ring to.
+   * @param {THREE.Scene} scene The scene to attach the tongue to.
    * @param {import('./Player.js').Player} player The attacking player.
    */
   constructor(scene, player) {
@@ -31,28 +51,10 @@ export class Attack {
     this.radius = ATTACK_RADIUS;
     this.enabled = true;
 
-    // --- Visual ring -------------------------------------------------------
-    // The geometry is a unit circle scaled to the live attack radius. Building
-    // it at a fixed size (as this originally did) meant the ring never grew
-    // when the Range power-up widened the blast — the damage got bigger but
-    // the picture stayed the same.
-    const geometry = new THREE.CircleGeometry(1, 48);
-    const material = new THREE.MeshBasicMaterial({
-      color: 0xffff00,
-      transparent: true,
-      opacity: 0.5,
-      side: THREE.DoubleSide,
-    });
-
-    this.ring = new THREE.Mesh(geometry, material);
-    this.ring.scale.setScalar(this.radius);
-    this.ring.visible = false;
-    // Float just above the ground so it doesn't z-fight with the floor.
-    this.ring.position.z = 1.2;
-    scene.add(this.ring);
-
-    // Seconds the ring has been visible for.
+    // Seconds the lash has been visible for.
     this.visualTimer = 0;
+    // Angle the lash was fired at, so a hop mid-lash does not twist it.
+    this.tongueAngle = 0;
 
     // True while Space is held down. Driving auto-fire from the game loop
     // (rather than relying on OS key-repeat) means holding Space keeps firing
@@ -60,10 +62,65 @@ export class Attack {
     this.spaceHeld = false;
 
     // Set by every successful shot and consumed by the main loop, so a hit is
-    // never lost when one visual ring overlaps the next.
+    // never lost when one visual overlaps the next.
     this.pendingHit = false;
 
+    this.buildTongue();
     this.bindInput();
+  }
+
+  /**
+   * Builds the tongue once. Extension and retraction are a scale on the
+   * group, not a geometry rebuild, so a Range power-up is free.
+   */
+  buildTongue() {
+    const points = [
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(BASE_LENGTH * 0.26, 0, 6),
+      new THREE.Vector3(BASE_LENGTH * 0.62, 0, -5),
+      new THREE.Vector3(BASE_LENGTH, 0, 0),
+    ];
+    const curve = new THREE.CatmullRomCurve3(points);
+    const geometry = new THREE.TubeGeometry(curve, 28, TONGUE_RADIUS, 8, false);
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xff5c7a,
+      roughness: 0.35,
+      metalness: 0.05,
+      emissive: 0x4a0714,
+      emissiveIntensity: 0.55,
+    });
+
+    this.tongue = new THREE.Group();
+    this.tongue.visible = false;
+
+    this.tongueTube = new THREE.Mesh(geometry, material);
+    this.tongue.add(this.tongueTube);
+
+    // The bulb at the root hides the hard cut where the tube meets the body.
+    this.tongueRoot = new THREE.Mesh(new THREE.SphereGeometry(TONGUE_RADIUS * 1.15, 12, 10), material);
+    this.tongue.add(this.tongueRoot);
+
+    // The tip is a separate, heavier bulb so it reads as the part that hits.
+    this.tongueTip = new THREE.Mesh(new THREE.SphereGeometry(TONGUE_TIP_RADIUS, 14, 12), material);
+    this.tongueTip.position.set(BASE_LENGTH, 0, 0);
+    this.tongue.add(this.tongueTip);
+
+    this.scene.add(this.tongue);
+
+    // A thin, expanding ground ring communicates the radial damage without
+    // becoming the old flat yellow disc.
+    const ringGeometry = new THREE.RingGeometry(0.88, 1, 64);
+    const ringMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff7a9a,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    this.shockwave = new THREE.Mesh(ringGeometry, ringMaterial);
+    this.shockwave.position.z = 1.5;
+    this.shockwave.visible = false;
+    this.scene.add(this.shockwave);
   }
 
   /**
@@ -93,11 +150,10 @@ export class Attack {
 
     this.cooldown = this.cooldownDuration;
 
-    // Snap the ring to the player, size it to the live radius, and show it.
-    this.ring.position.x = this.player.position.x;
-    this.ring.position.y = this.player.position.y;
-    this.ring.scale.setScalar(this.radius);
-    this.ring.visible = true;
+    this.tongueAngle = this.player.yaw ? this.player.yaw.rotation.z : 0;
+    this.tongue.rotation.z = this.tongueAngle;
+    this.tongue.visible = true;
+    this.shockwave.visible = true;
     this.visualTimer = ATTACK_VISUAL_DURATION;
 
     sound.attack();
@@ -110,9 +166,9 @@ export class Attack {
   /**
    * Returns true exactly once per fired attack, then clears the flag.
    *
-   * The main loop uses this instead of watching the visual ring, so a shot can
-   * never be swallowed by an overlapping ring (which happened when the attack
-   * cooldown was shorter than the ring's lifetime).
+   * The main loop uses this instead of watching the visual, so a shot can
+   * never be swallowed by an overlapping effect (which happened when the
+   * attack cooldown was shorter than the visual lifetime).
    *
    * @returns {boolean}
    */
@@ -123,7 +179,7 @@ export class Attack {
   }
 
   /**
-   * Advances the cooldown timer and fades the effect ring.
+   * Advances the cooldown timer and animates the lash.
    *
    * @param {number} delta Seconds since the previous frame.
    */
@@ -141,18 +197,42 @@ export class Attack {
     if (this.visualTimer > 0) {
       this.visualTimer = Math.max(0, this.visualTimer - delta);
 
-      if (this.visualTimer === 0) {
-        this.ring.visible = false;
-      }
-    }
+      const t = 1 - this.visualTimer / ATTACK_VISUAL_DURATION;
+      const k = this.radius / BASE_LENGTH;
 
-    // Keep the ring glued to the player while it is visible so it reads as
-    // "centered on Tode" even if he is mid-hop, and keep its size in step
-    // with the live radius in case Range changed mid-blast.
-    if (this.ring.visible) {
-      this.ring.position.x = this.player.position.x;
-      this.ring.position.y = this.player.position.y;
-      this.ring.scale.setScalar(this.radius);
+      // Out fast, hold for a beat, snap back. The return is deliberately
+      // quicker than the extension so the mouth feels elastic.
+      let reach;
+      if (t < 0.26) reach = easeOutCubic(t / 0.26);
+      else if (t < 0.58) reach = 1;
+      else reach = 1 - easeInCubic((t - 0.58) / 0.42);
+      reach = Math.max(0.04, reach);
+
+      this.tongue.position.set(
+        this.player.position.x,
+        this.player.position.y,
+        this.player.position.z + TONGUE_Z
+      );
+      // A small whip bend as the lash travels; it settles by the time the
+      // tongue retracts, so the root never looks detached from the mouth.
+      this.tongue.rotation.z = this.tongueAngle + Math.sin(t * Math.PI) * 0.1;
+
+      // Scale X for reach, Y/Z for thickness. The root and tip counter-scale
+      // so they stay round instead of stretching with the group.
+      this.tongue.scale.set(k * reach, k, k);
+      const inverseX = 1 / (k * reach);
+      const inverseYZ = 1 / k;
+      this.tongueRoot.scale.set(inverseX, inverseYZ, inverseYZ);
+      this.tongueTip.scale.set(inverseX, inverseYZ, inverseYZ);
+
+      this.shockwave.position.set(this.player.position.x, this.player.position.y, 1.5);
+      this.shockwave.scale.setScalar(this.radius * (0.35 + 0.75 * t));
+      this.shockwave.material.opacity = 0.3 * Math.pow(1 - t, 1.3);
+
+      if (this.visualTimer === 0) {
+        this.tongue.visible = false;
+        this.shockwave.visible = false;
+      }
     }
   }
 
@@ -160,7 +240,7 @@ export class Attack {
    * Returns the enemies lying inside the current attack radius.
    *
    * Large insects are measured to their body edge rather than their centre,
-   * so a boss is hittable when the ring touches its shell instead of only
+   * so a boss is hittable when the lash touches its shell instead of only
    * when it reaches the middle of a 4.5x body.
    *
    * @param {import('./Enemy.js').Enemy[]} enemies Active enemies.
@@ -178,12 +258,13 @@ export class Attack {
   }
 
   /**
-   * Clears the cooldown and hides the ring (used on game reset).
+   * Clears the cooldown and hides the lash (used on game reset).
    */
   reset() {
     this.cooldown = 0;
     this.visualTimer = 0;
     this.pendingHit = false;
-    this.ring.visible = false;
+    this.tongue.visible = false;
+    this.shockwave.visible = false;
   }
 }

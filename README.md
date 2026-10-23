@@ -2,7 +2,7 @@
 
 **A frog. A meadow. An endless swarm.**
 
-Tode has one attack: a tongue that fires in a circle around him. Insects arrive from every
+Tode has one attack: a tongue lash that clears a circle around him. Insects arrive from every
 direction, and every one you kill raises your maximum health — so the health bar is also the
 level bar. Every minute the game offers a choice that shapes the rest of the game.
 

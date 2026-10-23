@@ -108,6 +108,21 @@ export class Player {
     this.yaw = new THREE.Group();
     this.group.add(this.yaw);
 
+    // A soft blob shadow is cheaper than a shadow map and does more for the
+    // hop than one: it shrinks and fades as Tode leaves the ground.
+    this.shadow = new THREE.Mesh(
+      new THREE.CircleGeometry(28, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.18,
+        depthWrite: false,
+      })
+    );
+    this.shadow.position.z = 0.8;
+    this.shadow.renderOrder = 0;
+    scene.add(this.shadow);
+
     // Reference to the raw loaded model (rotated/offset independently).
     this.model = null;
 
@@ -353,6 +368,11 @@ export class Player {
 
     // Belt-and-braces: never let a single frame place the hero off-board.
     this.confine(this.group.position);
+
+    this.shadow.position.set(this.group.position.x, this.group.position.y, 0.8);
+    const lift = Math.min(1, this.group.position.z / JUMP_HEIGHT);
+    this.shadow.scale.setScalar(1 - 0.35 * lift);
+    this.shadow.material.opacity = 0.18 * (1 - 0.55 * lift);
   }
 
   /**
@@ -380,5 +400,6 @@ export class Player {
     this.inputQueue.length = 0;
     this.moveState.active = false;
     this.group.position.z = 0;
+    this.shadow.position.set(this.group.position.x, this.group.position.y, 0.8);
   }
 }

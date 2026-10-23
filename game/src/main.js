@@ -56,6 +56,21 @@ const ENEMY_HIT_DISTANCE = 45;
  */
 const MAX_ENEMIES = 48;
 
+/** Death-burst colours, keyed by species, so the kill matches the body. */
+const KILL_COLORS = {
+  fly: 0xffe066,
+  mosquito: 0xff9f80,
+  bee: 0xffc93c,
+  beetle: 0x8fd694,
+  centipede: 0xff8a65,
+  mole: 0xd7bde2,
+};
+
+/** @param {import('./components/Enemy.js').Enemy} enemy */
+function killColor(enemy) {
+  return enemy.boss ? 0xffb347 : (KILL_COLORS[enemy.typeKey] || 0xfff0a8);
+}
+
 /** Maximum HP gained per kill — this is what drives the level curve.
  *
  * Levels now gate talent ranks too, so this number does double duty. At 2.5
@@ -1695,6 +1710,7 @@ function triggerPondBonus() {
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
@@ -2228,9 +2244,12 @@ function gameLoop() {
   // =======================================================================
   attack.update(delta);
 
-  // Every successful fire queues exactly one hit. Watching the visual ring
-  // instead used to swallow shots when the cooldown was shorter than the ring.
+  // Every successful fire queues exactly one hit. Watching the visual effect
+  // instead used to swallow shots when the cooldown was shorter than the lash.
   if (attack.consumeHit()) {
+    // The tongue is already animate; this adds the tip spark and the FOV
+    // punch at the moment the damage lands.
+    juice.onAttack(player.position, player.yaw.rotation.z, attack.radius);
     const hit = attack.enemiesInRange(enemies);
     if (hit.length > 0) {
       const destroyed = hit.filter((enemy) => {
@@ -2242,7 +2261,7 @@ function gameLoop() {
         const killed = enemy.takeHit(power);
         // A boss that survives is the one impact the player can feel; ordinary
         // insects die too fast for a hit reaction to render.
-        if (!killed && enemy.boss) juice.onBossHit(enemy.position);
+        if (!killed) juice.onHit(enemy.position, enemy.boss);
 
         // Mosquito genes return a share of the damage as HP.
         if (playerStats.lifesteal > 0 && dealt > 0) {
@@ -2257,7 +2276,7 @@ function gameLoop() {
           // own much larger point value.
           const points = Math.round((enemy.points || enemy.type.points) * (1 + talentStats.scoreMult));
           // Feedback before disposal so the burst starts at the body.
-          juice.onKill(enemy.position, points, enemy.boss);
+          juice.onKill(enemy.position, points, enemy.boss, killColor(enemy));
           enemy.dispose();
           score.addKillPoints(points);
           // Those same points charge the awakening bar.

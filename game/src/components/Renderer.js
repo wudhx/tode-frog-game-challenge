@@ -14,8 +14,17 @@ export function createRenderer() {
     antialias: true,
   });
 
-  renderer.setPixelRatio(window.devicePixelRatio);
+  // A 3x retina display buys almost nothing at this art style but costs a
+  // third of the fill rate; cap it so the post-processing headroom stays.
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
+
+  // Filmic response: highlights roll off instead of clipping, which makes the
+  // additive hit particles and the awakening flash read as light rather than
+  // flat white.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.12;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   return renderer;
 }

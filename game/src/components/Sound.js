@@ -23,6 +23,9 @@ class Sound {
     /** Muting toggles all effects without tearing down the context. */
     this.muted = false;
 
+    /** One second of white noise, reused by every filtered noise burst. */
+    this._noiseBuffer = null;
+
     this.bindUnlock();
   }
 
@@ -92,6 +95,65 @@ class Sound {
     osc.stop(stop + 0.02);
   }
 
+  /**
+   * A filtered white-noise burst. This is what gives the tongue its whip and
+   * the kill its wet splat; oscillators alone always sound like a beep.
+   *
+   * @param {object} [options]
+   * @param {number} [options.duration] Seconds.
+   * @param {number} [options.gain] Peak gain, 0–1.
+   * @param {number} [options.freq] Filter start frequency in Hz.
+   * @param {number} [options.endFreq] Filter end frequency in Hz.
+   * @param {number} [options.q] Filter resonance.
+   * @param {BiquadFilterType} [options.type] Filter type.
+   * @param {number} [options.delay] Seconds to wait before starting.
+   */
+  noise({
+    duration = 0.14,
+    gain = 0.2,
+    freq = 1400,
+    endFreq = 500,
+    q = 0.9,
+    type = 'bandpass',
+    delay = 0,
+  } = {}) {
+    if (!this.ctx || this.muted) return;
+
+    if (!this._noiseBuffer) {
+      const length = Math.floor(this.ctx.sampleRate);
+      const buffer = this.ctx.createBuffer(1, length, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+      this._noiseBuffer = buffer;
+    }
+
+    const start = this.ctx.currentTime + delay;
+    const stop = start + duration;
+
+    const source = this.ctx.createBufferSource();
+    source.buffer = this._noiseBuffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = type;
+    filter.frequency.setValueAtTime(freq, start);
+    if (endFreq && endFreq > 0) {
+      filter.frequency.exponentialRampToValueAtTime(endFreq, stop);
+    }
+    filter.Q.value = q;
+
+    const env = this.ctx.createGain();
+    env.gain.setValueAtTime(0.0001, start);
+    env.gain.exponentialRampToValueAtTime(Math.max(0.0001, gain), start + 0.008);
+    env.gain.exponentialRampToValueAtTime(0.0001, stop);
+
+    source.connect(filter);
+    filter.connect(env);
+    env.connect(this.master);
+
+    source.start(start, Math.random() * 0.4, duration);
+    source.stop(stop + 0.02);
+  }
+
   /** Plays a short arpeggio from a list of frequencies. */
   arpeggio(freqs, { step = 0.08, duration = 0.14, type = 'sine', gain = 0.7, offset = 0 } = {}) {
     freqs.forEach((freq, index) => {
@@ -110,12 +172,15 @@ class Sound {
 
   /** A falling sweep for the attack shockwave. */
   attack() {
+    // Noise first: the whip is the transient, the tones are the body.
+    this.noise({ duration: 0.12, gain: 0.16, freq: 2400, endFreq: 650, q: 1.2 });
     this.tone({ freq: 760, endFreq: 180, duration: 0.2, type: 'sawtooth', gain: 0.4 });
     this.tone({ freq: 380, endFreq: 90, duration: 0.24, type: 'sine', gain: 0.35 });
   }
 
   /** A bright two-note chirp when a fly is swallowed. */
   kill() {
+    this.noise({ duration: 0.07, gain: 0.14, freq: 900, endFreq: 180, q: 0.8, delay: 0.01 });
     this.tone({ freq: 900, endFreq: 1500, duration: 0.08, type: 'square', gain: 0.3 });
     this.tone({ freq: 1500, endFreq: 2100, duration: 0.09, type: 'square', gain: 0.26, delay: 0.07 });
   }
