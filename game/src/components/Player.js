@@ -111,7 +111,7 @@ export class Player {
     // A soft blob shadow is cheaper than a shadow map and does more for the
     // hop than one: it shrinks and fades as Tode leaves the ground.
     this.shadow = new THREE.Mesh(
-      new THREE.CircleGeometry(28, 32),
+      new THREE.CircleGeometry(14, 32),
       new THREE.MeshBasicMaterial({
         color: 0x000000,
         transparent: true,
@@ -122,6 +122,9 @@ export class Player {
     this.shadow.position.z = 0.8;
     this.shadow.renderOrder = 0;
     scene.add(this.shadow);
+
+    // Fit to the loaded model's footprint; the hop animation multiplies this.
+    this.shadowBaseScale = 1;
 
     // Reference to the raw loaded model (rotated/offset independently).
     this.model = null;
@@ -168,6 +171,16 @@ export class Player {
     // it loads, so collision uses his real size rather than a guess.
     this.radius = 22;
 
+    /**
+     * Local mouth anchor, in the player's facing frame: X is how far forward
+     * of the centre the tongue starts, Z is its height above the feet. Filled
+     * from the loaded model's bounds so a bigger frog still fires from its
+     * mouth instead of its chest.
+     *
+     * @type {THREE.Vector3}
+     */
+    this.mouth = new THREE.Vector3(10, 0, 8);
+
     /** Timestamp of the last "blocked" thud, so it cannot machine-gun. */
     this.lastBumpAt = 0;
 
@@ -195,8 +208,10 @@ export class Player {
           // into our Z-up coordinate system so the frog stands upright.
           model.rotation.x = Math.PI / 2;
 
-          // Scale the frog to a sensible size for the map.
-          model.scale.setScalar(20);
+          // Scale the frog to a sensible size for the map. 24 is deliberately a
+          // little larger than the old 20: the hero reads better against the
+          // 3000-unit board without changing the hitbox math.
+          model.scale.setScalar(24);
 
           // Sit the model exactly on the ground plane (Z = 0) by measuring
           // how far the geometry extends below its own origin.
@@ -207,6 +222,16 @@ export class Player {
           // Half of the widest horizontal extent is the frog's footprint.
           this.radius =
             Math.max(glbBox.max.x - glbBox.min.x, glbBox.max.y - glbBox.min.y) / 2;
+
+          // Mouth: just inside the front face, a little above mid-height.
+          const height = glbBox.max.z - glbBox.min.z;
+          this.mouth.set(
+            Math.max(6, glbBox.max.x - 3),
+            0,
+            Math.max(6, height * 0.55)
+          );
+          this.shadowBaseScale = Math.max(0.8, this.radius / 10);
+          this.shadow.scale.setScalar(this.shadowBaseScale);
 
           this.model = model;
           this.modelSource = 'glb';
@@ -221,6 +246,12 @@ export class Player {
           const placeholder = buildFrog();
           const box = new THREE.Box3().setFromObject(placeholder);
           this.radius = Math.max(box.max.x - box.min.x, box.max.y - box.min.y) / 2;
+
+          const height = box.max.z - box.min.z;
+          this.mouth.set(Math.max(6, box.max.x - 3), 0, Math.max(6, height * 0.55));
+          this.shadowBaseScale = Math.max(0.8, this.radius / 10);
+          this.shadow.scale.setScalar(this.shadowBaseScale);
+
           this.model = placeholder;
           this.modelSource = 'procedural';
           this.yaw.add(placeholder);
@@ -371,7 +402,7 @@ export class Player {
 
     this.shadow.position.set(this.group.position.x, this.group.position.y, 0.8);
     const lift = Math.min(1, this.group.position.z / JUMP_HEIGHT);
-    this.shadow.scale.setScalar(1 - 0.35 * lift);
+    this.shadow.scale.setScalar(this.shadowBaseScale * (1 - 0.35 * lift));
     this.shadow.material.opacity = 0.18 * (1 - 0.55 * lift);
   }
 
@@ -401,5 +432,7 @@ export class Player {
     this.moveState.active = false;
     this.group.position.z = 0;
     this.shadow.position.set(this.group.position.x, this.group.position.y, 0.8);
+    this.shadow.scale.setScalar(this.shadowBaseScale);
+    this.shadow.material.opacity = 0.18;
   }
 }

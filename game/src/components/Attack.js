@@ -13,12 +13,18 @@ export const ATTACK_VISUAL_DURATION = 0.3;
 
 /** Geometry is authored at this length; the live radius scales it. */
 const BASE_LENGTH = ATTACK_RADIUS;
-/** Thickness of the tongue at rest, in world units. */
-const TONGUE_RADIUS = 4.5;
+/** Thickness where the tongue leaves the mouth. */
+const TONGUE_ROOT_RADIUS = 5.2;
+/** Thickness at the tip, before the bulb. */
+const TONGUE_TIP_RADIUS = 1.8;
 /** Radius of the tip bulb. */
-const TONGUE_TIP_RADIUS = 7;
-/** Height of the tongue root above the frog's feet. */
-const TONGUE_Z = 18;
+const TONGUE_TIP_BULB = 4.4;
+/**
+ * Height the tip should meet. The mouth sits low on the frog while the
+ * insects hover at 38; aiming the straight tongue at this height keeps it
+ * from passing under the swarm without bending the tongue.
+ */
+const TONGUE_TARGET_Z = 38;
 
 /** Fast start, soft finish. */
 function easeOutCubic(t) {
@@ -33,9 +39,10 @@ function easeInCubic(t) {
 /**
  * Implements the player's area-of-effect tongue attack.
  *
- * Pressing Space whips a pink tongue out from Tode's mouth. The damage is
- * still a radial check around the hero, so a lash that sweeps past an insect
- * on any side kills it; a thin ring on the ground communicates that radius.
+ * Pressing Space shoots a straight, tapered tongue out of Tode's mouth along
+ * his facing. The damage check remains radial around the hero, so the lash
+ * does not have to physically touch every insect it kills; a thin ground ring
+ * communicates that radius.
  */
 export class Attack {
   /**
@@ -53,12 +60,9 @@ export class Attack {
 
     // Seconds the lash has been visible for.
     this.visualTimer = 0;
-    // Angle the lash was fired at, so a hop mid-lash does not twist it.
+    // Mouth angle frozen at fire time, so a hop mid-lash does not drag the
+    // root sideways across the frog's face.
     this.tongueAngle = 0;
-    // Set by the game loop to the nearest enemy in reach; null falls back to
-    // the hero's facing. The damage is radial, but the lash should still look
-    // like it is hitting something rather than stabbing empty grass.
-    this.aimAngle = null;
 
     // True while Space is held down. Driving auto-fire from the game loop
     // (rather than relying on OS key-repeat) means holding Space keeps firing
@@ -74,40 +78,48 @@ export class Attack {
   }
 
   /**
-   * Builds the tongue once. Extension and retraction are a scale on the
-   * group, not a geometry rebuild, so a Range power-up is free.
+   * Builds a straight, tapered cylinder. The root sits slightly inside the
+   * mouth so the cut is hidden by the body; only the tongue that clears the
+   * lips is visible. Length is animated by scaling X, so the cross-section
+   * never stretches.
    */
   buildTongue() {
-    const points = [
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(BASE_LENGTH * 0.26, 0, 6),
-      new THREE.Vector3(BASE_LENGTH * 0.62, 0, -5),
-      new THREE.Vector3(BASE_LENGTH, 0, 0),
-    ];
-    const curve = new THREE.CatmullRomCurve3(points);
-    const geometry = new THREE.TubeGeometry(curve, 28, TONGUE_RADIUS, 8, false);
+    const geometry = new THREE.CylinderGeometry(
+      TONGUE_TIP_RADIUS,
+      TONGUE_ROOT_RADIUS,
+      BASE_LENGTH,
+      14,
+      1,
+      false
+    );
+    // Cylinder is authored along +Y with its root at -Y. Lay it along +X and
+    // move the root to the group origin, so scaling X extends from the mouth.
+    geometry.rotateZ(-Math.PI / 2);
+    geometry.translate(BASE_LENGTH / 2, 0, 0);
+
     const material = new THREE.MeshStandardMaterial({
       color: 0xff5c7a,
-      roughness: 0.35,
-      metalness: 0.05,
+      roughness: 0.42,
+      metalness: 0.03,
       emissive: 0x4a0714,
-      emissiveIntensity: 0.55,
+      emissiveIntensity: 0.45,
     });
 
     this.tongue = new THREE.Group();
     this.tongue.visible = false;
 
+    // Pitch is a child so the root stays at the mouth while the tip rises.
+    this.tonguePitch = new THREE.Group();
+    this.tongue.add(this.tonguePitch);
+
     this.tongueTube = new THREE.Mesh(geometry, material);
-    this.tongue.add(this.tongueTube);
+    this.tonguePitch.add(this.tongueTube);
 
-    // The bulb at the root hides the hard cut where the tube meets the body.
-    this.tongueRoot = new THREE.Mesh(new THREE.SphereGeometry(TONGUE_RADIUS * 1.15, 12, 10), material);
-    this.tongue.add(this.tongueRoot);
-
-    // The tip is a separate, heavier bulb so it reads as the part that hits.
-    this.tongueTip = new THREE.Mesh(new THREE.SphereGeometry(TONGUE_TIP_RADIUS, 14, 12), material);
+    // A single bulb at the tip; no root bulb, which is what made the old
+    // version look like a growth on the frog's back.
+    this.tongueTip = new THREE.Mesh(new THREE.SphereGeometry(TONGUE_TIP_BULB, 14, 12), material);
     this.tongueTip.position.set(BASE_LENGTH, 0, 0);
-    this.tongue.add(this.tongueTip);
+    this.tonguePitch.add(this.tongueTip);
 
     this.scene.add(this.tongue);
 
@@ -154,9 +166,7 @@ export class Attack {
 
     this.cooldown = this.cooldownDuration;
 
-    this.tongueAngle = Number.isFinite(this.aimAngle)
-      ? this.aimAngle
-      : (this.player.yaw ? this.player.yaw.rotation.z : 0);
+    this.tongueAngle = this.player.yaw ? this.player.yaw.rotation.z : 0;
     this.tongue.rotation.z = this.tongueAngle;
     this.tongue.visible = true;
     this.shockwave.visible = true;
@@ -206,30 +216,35 @@ export class Attack {
       const t = 1 - this.visualTimer / ATTACK_VISUAL_DURATION;
       const k = this.radius / BASE_LENGTH;
 
-      // Out fast, hold for a beat, snap back. The return is deliberately
-      // quicker than the extension so the mouth feels elastic.
+      // Out fast, hold for a beat, snap back.
       let reach;
-      if (t < 0.26) reach = easeOutCubic(t / 0.26);
-      else if (t < 0.58) reach = 1;
-      else reach = 1 - easeInCubic((t - 0.58) / 0.42);
+      if (t < 0.24) reach = easeOutCubic(t / 0.24);
+      else if (t < 0.56) reach = 1;
+      else reach = 1 - easeInCubic((t - 0.56) / 0.44);
       reach = Math.max(0.04, reach);
 
-      this.tongue.position.set(
-        this.player.position.x,
-        this.player.position.y,
-        this.player.position.z + TONGUE_Z
+      // Anchor at the mouth: forward along the frozen facing, at the mouth's
+      // height. The root is a few units inside the lips so the cut disappears.
+      const mouth = this.player.mouth;
+      const forward = mouth ? mouth.x : 8;
+      const height = mouth ? mouth.z : 8;
+      const angle = this.tongueAngle;
+      // Point the tip at the swarm's hover height; a longer Range talent
+      // flattens the angle instead of lifting the tip into the sky.
+      this.tonguePitch.rotation.y = -Math.atan2(
+        TONGUE_TARGET_Z - height,
+        Math.max(1, this.radius)
       );
-      // A small whip bend as the lash travels; it settles by the time the
-      // tongue retracts, so the root never looks detached from the mouth.
-      this.tongue.rotation.z = this.tongueAngle + Math.sin(t * Math.PI) * 0.1;
+      this.tongue.position.set(
+        this.player.position.x + Math.cos(angle) * forward,
+        this.player.position.y + Math.sin(angle) * forward,
+        this.player.position.z + height
+      );
 
-      // Scale X for reach, Y/Z for thickness. The root and tip counter-scale
-      // so they stay round instead of stretching with the group.
+      // Straight: no wiggle, no curve. Only the reach changes.
+      this.tongue.rotation.z = angle;
       this.tongue.scale.set(k * reach, k, k);
-      const inverseX = 1 / (k * reach);
-      const inverseYZ = 1 / k;
-      this.tongueRoot.scale.set(inverseX, inverseYZ, inverseYZ);
-      this.tongueTip.scale.set(inverseX, inverseYZ, inverseYZ);
+      this.tongueTip.scale.set(1 / (k * reach), 1 / k, 1 / k);
 
       this.shockwave.position.set(this.player.position.x, this.player.position.y, 1.5);
       this.shockwave.scale.setScalar(this.radius * (0.35 + 0.75 * t));

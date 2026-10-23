@@ -71,30 +71,7 @@ function killColor(enemy) {
   return enemy.boss ? 0xffb347 : (KILL_COLORS[enemy.typeKey] || 0xfff0a8);
 }
 
-/**
- * Angle from the hero to the nearest enemy the next lash can reach, or null
- * when the board is empty around him (the lash then follows his facing).
- *
- * @returns {number|null}
- */
-function nearestEnemyAngle() {
-  let best = null;
-  let bestDistance = Infinity;
 
-  for (const enemy of enemies) {
-    const dx = enemy.position.x - player.position.x;
-    const dy = enemy.position.y - player.position.y;
-    const distance = dx * dx + dy * dy;
-    const reach = attack.radius + (enemy.boss ? enemy.radius : 0);
-
-    if (distance <= reach * reach && distance < bestDistance) {
-      bestDistance = distance;
-      best = Math.atan2(dy, dx);
-    }
-  }
-
-  return best;
-}
 
 /** Maximum HP gained per kill — this is what drives the level curve.
  *
@@ -2267,7 +2244,6 @@ function gameLoop() {
   // =======================================================================
   // 4. ATTACK LIFECYCLE
   // =======================================================================
-  attack.aimAngle = nearestEnemyAngle();
   attack.update(delta);
 
   // Every successful fire queues exactly one hit. Watching the visual effect
