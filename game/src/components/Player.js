@@ -204,9 +204,12 @@ export class Player {
         (gltf) => {
           const model = gltf.scene;
 
-          // The asset is authored "lying down" for a Y-up world; rotate it
-          // into our Z-up coordinate system so the frog stands upright.
-          model.rotation.x = Math.PI / 2;
+          // The asset is authored Y-up with its face on local +Z. First stand
+          // it up, then yaw the model a quarter turn so that face points along
+          // the game's +X forward axis. Without the second rotation the frog
+          // moves sideways and the tongue exits from its flank.
+          model.rotation.order = 'ZXY';
+          model.rotation.set(Math.PI / 2, 0, Math.PI / 2);
 
           // Scale the frog to a sensible size for the map. 24 is deliberately a
           // little larger than the old 20: the hero reads better against the
@@ -223,12 +226,14 @@ export class Player {
           this.radius =
             Math.max(glbBox.max.x - glbBox.min.x, glbBox.max.y - glbBox.min.y) / 2;
 
-          // Mouth: just inside the front face, a little above mid-height.
+          // Mouth: inside the snout, below the eyes. Five units of inset keeps
+          // the flat root cap hidden behind the face; the visible tongue then
+          // emerges through the mouth rather than being stuck onto it.
           const height = glbBox.max.z - glbBox.min.z;
           this.mouth.set(
-            Math.max(6, glbBox.max.x - 3),
+            Math.max(4, glbBox.max.x - 5),
             0,
-            Math.max(6, height * 0.55)
+            Math.max(5, height * 0.54)
           );
           this.shadowBaseScale = Math.max(0.8, this.radius / 10);
           this.shadow.scale.setScalar(this.shadowBaseScale);
@@ -248,7 +253,7 @@ export class Player {
           this.radius = Math.max(box.max.x - box.min.x, box.max.y - box.min.y) / 2;
 
           const height = box.max.z - box.min.z;
-          this.mouth.set(Math.max(6, box.max.x - 3), 0, Math.max(6, height * 0.55));
+          this.mouth.set(Math.max(4, box.max.x - 5), 0, Math.max(5, height * 0.54));
           this.shadowBaseScale = Math.max(0.8, this.radius / 10);
           this.shadow.scale.setScalar(this.shadowBaseScale);
 
