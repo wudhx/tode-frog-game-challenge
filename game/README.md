@@ -24,7 +24,7 @@ A 3D survival RPG built with **Three.js**. Guide Tode across a checkerboard mead
 
 ### Insect species
 
-A frog's diet, rendered as four distinct opponents. Each is generated from primitives at runtime — no model files, no textures on disk.
+A frog's diet, rendered as six distinct opponents. Each is generated from primitives at runtime — no model files, no textures on disk.
 
 | Species | Traits | Reward |
 |---|---|---|
@@ -32,8 +32,10 @@ A frog's diet, rendered as four distinct opponents. Each is generated from primi
 | **Mosquito** | Small and very fast (1.65×), long proboscis | 15 pts |
 | **Bee** | Banded abdomen (procedurally painted texture), four wings, stinger | 25 pts |
 | **Beetle** | Large, armoured — **survives the first hit** | 40 pts |
+| **Centipede** | Segmented, slower, 30 contact damage | 35 pts |
+| **Mole** | Slow, 50% armour, four hit points | 45 pts |
 
-The spawn table is weighted by score: early runs are almost all flies, and beetles only start appearing once you are past 60 points.
+The spawn table is weighted by score: early runs are almost all flies, beetles start appearing past 60 points, and centipedes and moles join past 150.
 
 ### Power-ups
 
@@ -96,7 +98,7 @@ src/
 
 **Dynamic difficulty** — A difficulty factor `1 + score × 0.0012` (capped at 12) linearly scales spawn delay, movement speed, attack cooldown and attack range. Enemy parameters are deliberately tuned to scale slightly faster than the player's, so the challenge never fades.
 
-**Procedural insects** — An early bundled enemy model turned out to be a *skinned* mesh whose scale could not be driven from code, so it rendered invisibly. Rather than fight it, all four species are assembled at runtime from spheres, cones, cylinders and circles, with the bee's stripes painted onto a `CanvasTexture`. Blueprints are cached and cloned, so geometry and materials are shared across the whole swarm.
+**Procedural insects** — An early bundled enemy model turned out to be a *skinned* mesh whose scale could not be driven from code, so it rendered invisibly. Rather than fight it, all six species are assembled at runtime from spheres, cones, cylinders and circles, with the bee's stripes painted onto a `CanvasTexture`. Blueprints are cached and cloned, so geometry and materials are shared across the whole swarm.
 
 **Procedural audio** — `Sound.js` builds one `AudioContext` lazily on first input and exposes small note helpers. A shared `tone()` primitive handles the oscillator, the frequency glide and the gain envelope, so each effect is a couple of lines.
 
