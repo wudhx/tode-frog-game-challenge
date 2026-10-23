@@ -55,6 +55,10 @@ export class Attack {
     this.visualTimer = 0;
     // Angle the lash was fired at, so a hop mid-lash does not twist it.
     this.tongueAngle = 0;
+    // Set by the game loop to the nearest enemy in reach; null falls back to
+    // the hero's facing. The damage is radial, but the lash should still look
+    // like it is hitting something rather than stabbing empty grass.
+    this.aimAngle = null;
 
     // True while Space is held down. Driving auto-fire from the game loop
     // (rather than relying on OS key-repeat) means holding Space keeps firing
@@ -150,7 +154,9 @@ export class Attack {
 
     this.cooldown = this.cooldownDuration;
 
-    this.tongueAngle = this.player.yaw ? this.player.yaw.rotation.z : 0;
+    this.tongueAngle = Number.isFinite(this.aimAngle)
+      ? this.aimAngle
+      : (this.player.yaw ? this.player.yaw.rotation.z : 0);
     this.tongue.rotation.z = this.tongueAngle;
     this.tongue.visible = true;
     this.shockwave.visible = true;
