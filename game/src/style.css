@@ -1801,7 +1801,8 @@ canvas.game {
   flex-direction: column;
   gap: 14px;
   padding: 24px;
-  background: rgba(10, 20, 12, 0.78);
+  /* Opaque, so a hurt flash or red vignette can never tint the results. */
+  background: radial-gradient(circle at 50% 30%, #14251a 0%, #0a140c 55%, #060c08 100%);
   color: #ffffff;
   text-align: center;
   /* Sit above the transient hurt flash and vignette. */
