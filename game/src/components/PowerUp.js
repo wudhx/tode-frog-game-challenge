@@ -83,7 +83,7 @@ export const POWERUP_TYPES = {
     key: 'bomb',
     label: 'Bomb',
     blurb: 'Clear the sky',
-    detail: 'Detonates instantly, wiping out every insect on the board.',
+    detail: 'Detonates instantly: clears ordinary insects and deals 20% of a boss\'s max HP.',
     duration: 0,
     instant: true,
     color: 0xb08cff,

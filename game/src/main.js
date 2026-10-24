@@ -128,6 +128,13 @@ const BOSS_BONUS_GROWTH = 0.25;
  * range keeps the hero safe — but the boss survives long enough to be a boss.
  */
 const BOSS_AWAKEN_DAMAGE_MULT = 0.6;
+/**
+ * Share of a boss's max HP removed by the Bomb pickup.
+ *
+ * The bomb clears the swarm but must not delete a boss encounter outright;
+ * 20% is a real tempo swing without skipping the fight.
+ */
+const BOMB_BOSS_DAMAGE = 0.2;
 
 // --- Boss signature abilities ---------------------------------------------
 /** Poison applied by a centipede pool: ticks and their cadence live here. */
@@ -314,8 +321,6 @@ const awakening = new Awakening();
 
 /** Run-long stats earned from bosses this run. */
 const bossBonus = { maxHp: 0, attack: 0, defense: 0 };
-/** The live boss (also present in `enemies`), or null. */
-let currentBoss = null;
 /** Frozen while a gene card or the pause menu is open. */
 let paused = false;
 /** Seconds since the run started, used for the drop-rate curve. */
@@ -1568,6 +1573,49 @@ function grantBossBonus() {
   );
 }
 
+/**
+ * Pays out one kill: score, Awakening charge, max HP, gene drop, boss bonus
+ * and the legendary-stack fallback.
+ *
+ * Shared by the tongue and the Bomb so a boss killed by either path clears
+ * its health bar and grants its rewards exactly once.
+ *
+ * @param {object} enemy The enemy that died.
+ */
+function awardKill(enemy) {
+  // The Scavenger talent scales every kill reward; bosses carry their own
+  // much larger point value.
+  const points = Math.round((enemy.points || enemy.type.points) * (1 + talents.stats().scoreMult));
+  // Feedback before disposal so the burst starts at the body.
+  juice.onKill(enemy.position, points, enemy.boss, killColor(enemy));
+  enemy.dispose();
+  score.addKillPoints(points);
+  // Those same points charge the awakening bar.
+  if (awakening.addScore(points)) {
+    hud.showAction('Awakening charged — press E', 'awaken', '#7c5cff', 1600);
+    renderAwakenBar();
+  }
+  // Every kill nudges the hero's maximum HP, which is what raises his level
+  // over a run.
+  health.growMaxHp(KILL_MAX_HP_GAIN);
+  // And it may drop a gene orb of that species.
+  genes.maybeDrop(enemy, runTime, enemy.boss);
+
+  // Bosses pay out a run-long stat bonus on top of the orb.
+  if (enemy.boss) {
+    if (boss === enemy) boss = null;
+    renderBossBar();
+    grantBossBonus();
+  }
+
+  // Once every gene is legendary, orbs stop; kills feed stacks instead.
+  const grown = genes.grantStackOnKill(enemy.elite || enemy.boss);
+  if (grown) {
+    hud.showAction(`${GENE_TYPES[grown.key].label} gene: +1 stack`, 'gene', '#ffc83d', 1200);
+    renderGeneBar();
+  }
+}
+
 
 // ---------------------------------------------------------------------------
 // Geometry helpers
@@ -2437,8 +2485,25 @@ function gameLoop() {
       health.addMaxHp(HEART_PICKUP);
       sound.heal();
     } else if (type.key === 'bomb') {
-      enemies.forEach((enemy) => enemy.dispose());
-      enemies = [];
+      // The Bomb clears ordinary insects outright. A boss survives the blast
+      // with its encounter intact, minus a fixed share of max HP; routing a
+      // boss death through awardKill keeps the bar, score and bonuses in sync.
+      const survivors = [];
+      for (const enemy of enemies) {
+        if (!enemy.boss) {
+          enemy.dispose();
+          continue;
+        }
+        const killed = enemy.takeTrueDamage(enemy.maxHp * BOMB_BOSS_DAMAGE);
+        juice.onHit(enemy.position, true);
+        if (killed) {
+          awardKill(enemy);
+        } else {
+          survivors.push(enemy);
+        }
+      }
+      enemies = survivors;
+      renderBossBar();
       sound.bomb();
     }
   }
@@ -2475,44 +2540,7 @@ function gameLoop() {
       });
 
       if (destroyed.length > 0) {
-        destroyed.forEach((enemy) => {
-          // The Scavenger talent scales every kill reward; bosses carry their
-          // own much larger point value.
-          const points = Math.round((enemy.points || enemy.type.points) * (1 + talentStats.scoreMult));
-          // Feedback before disposal so the burst starts at the body.
-          juice.onKill(enemy.position, points, enemy.boss, killColor(enemy));
-          enemy.dispose();
-          score.addKillPoints(points);
-          // Those same points charge the awakening bar.
-          if (awakening.addScore(points)) {
-            hud.showAction('Awakening charged — press E', 'awaken', '#7c5cff', 1600);
-            renderAwakenBar();
-          }
-          // Every kill nudges the hero's maximum HP, which is what raises
-          // his level over a run.
-          health.growMaxHp(KILL_MAX_HP_GAIN);
-          // And it may drop a gene orb of that species.
-          genes.maybeDrop(enemy, runTime, enemy.boss);
-
-          // Bosses pay out a run-long stat bonus on top of the orb.
-          if (enemy.boss) {
-            if (boss === enemy) boss = null;
-            renderBossBar();
-            grantBossBonus();
-          }
-
-          // Once every gene is legendary, orbs stop; kills feed stacks instead.
-          const grown = genes.grantStackOnKill(enemy.elite || enemy.boss);
-          if (grown) {
-            hud.showAction(
-              `${GENE_TYPES[grown.key].label} gene: +1 stack`,
-              'gene',
-              '#ffc83d',
-              1200
-            );
-            renderGeneBar();
-          }
-        });
+        destroyed.forEach((enemy) => awardKill(enemy));
         enemies = enemies.filter((enemy) => !destroyed.includes(enemy));
         sound.kill();
       }

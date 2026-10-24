@@ -969,6 +969,22 @@ export class Enemy {
   }
 
   /**
+   * Applies damage that ignores armour. Used by the Bomb pickup, whose
+   * advertised 20% of a boss's max HP should not shrink with boss armour.
+   *
+   * @param {number} damage
+   * @returns {boolean} True if the insect was destroyed, false if it survived.
+   */
+  takeTrueDamage(damage) {
+    this.hp -= damage;
+    if (this.hp > 0) {
+      this.hitFlash = 0.25;
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * Animates the wings and the damage swell. Called once per frame.
    *
    * @param {number} delta Seconds since the previous frame.
