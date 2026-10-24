@@ -185,13 +185,13 @@ class Sound {
     this.tone({ freq: 1500, endFreq: 2100, duration: 0.09, type: 'square', gain: 0.26, delay: 0.07 });
   }
 
-  /** A dull thud for losing a heart. */
+  /** A dull thud for taking damage. */
   hurt() {
     this.tone({ freq: 320, endFreq: 110, duration: 0.2, type: 'square', gain: 0.38 });
     this.tone({ freq: 150, endFreq: 65, duration: 0.26, type: 'triangle', gain: 0.34 });
   }
 
-  /** A short chime for gaining a heart. */
+  /** A short chime for restoring HP. */
   heal() {
     this.arpeggio([659, 880, 1175], { step: 0.06, duration: 0.14, type: 'sine', gain: 0.5 });
   }

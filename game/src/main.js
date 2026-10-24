@@ -109,7 +109,7 @@ const MAX_TOTAL_DAMAGE_REDUCTION = 0.8;
 const FIRST_BOSS_SCORE = 2000;
 /** Score gap between later bosses. */
 const BOSS_SCORE_STEP = 3000;
-/** Permanent stat bonus ranges for downing a boss. */
+/** Run-long stat bonus ranges for downing a boss. */
 const BOSS_BONUS_HP_MIN = 10;
 const BOSS_BONUS_HP_MAX = 40;
 const BOSS_BONUS_ATK_MIN = 0.1;
@@ -312,7 +312,7 @@ const genes = new GeneSystem(scene, 3);
 const talents = new TalentSystem(TALENT_SLOTS);
 const awakening = new Awakening();
 
-/** Permanent stats earned from bosses this run. */
+/** Run-long stats earned from bosses this run. */
 const bossBonus = { maxHp: 0, attack: 0, defense: 0 };
 /** The live boss (also present in `enemies`), or null. */
 let currentBoss = null;
@@ -447,7 +447,7 @@ function renderTalentPips() {
       const rank = talents.levelOf(talent);
       const live = formatTalentEffect(talentEffectAt(talent, rank));
       pips.push(
-        `<span class="talent-pip filled" title="${talent.name} Lv.${rank} — ${live}">${
+        `<span class="talent-pip filled" title="${talent.name} — Rank ${rank}: ${live}">${
           talent.name
             .split(' ')
             .map((word) => word[0])
@@ -458,7 +458,7 @@ function renderTalentPips() {
   }
   const left = Math.max(0, TALENT_INTERVAL - talents.timer);
   const hint = talents.full
-    ? 'Talent slots full'
+    ? 'All talent slots are full'
     : `Next talent in ${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
   talentBar.innerHTML =
     `<span class="talent-bar-label">Talents</span>${pips.join('')}` +
@@ -490,7 +490,7 @@ function renderAwakenBar() {
 
   let label;
   if (awakening.active) {
-    label = `Awakened ${awakening.remaining.toFixed(1)}s`;
+    label = `Awakened · ${awakening.remaining.toFixed(1)}s left`;
   } else if (awakening.ready) {
     label = 'Ready · press E';
   } else {
@@ -515,7 +515,7 @@ function triggerAwakening() {
   juice.onAwaken();
   sound.awaken();
   hud.showAction(
-    `Awakening — ${AWAKEN_DURATION}s of triple damage`,
+    `Awakening: ${AWAKEN_DURATION}s of triple damage`,
     'awaken',
     '#7c5cff',
     1600
@@ -548,16 +548,16 @@ function showGeneCard() {
   let actionText;
   let mergeText;
   if (info.kind === 'new') {
-    actionText = `Lock into slot ${info.slotIndex + 1} · permanent`;
-    mergeText = 'First stack · locks this species permanently';
+    actionText = `Lock into slot ${info.slotIndex + 1} · for this run`;
+    mergeText = 'First stack · locks this species for the run';
   } else if (info.kind === 'full') {
-    actionText = 'All slots locked — cannot take this gene';
-    mergeText = 'Skip this one';
+    actionText = 'All gene slots are full';
+    mergeText = 'Take is disabled · skip this orb';
   } else if (info.kind === 'upgrade') {
     actionText =
       `${TIER_LABELS[info.currentTier]} → ${TIER_LABELS[info.nextTier]} · ` +
       `stacks ${fmt(info.currentStacks)} → ${fmt(info.stacks)}`;
-    mergeText = 'Quality upgraded · stacks converted proportionally';
+    mergeText = 'Quality upgraded · stacks converted to preserve the bonus';
   } else {
     actionText = `Stacks ${fmt(info.currentStacks)} → ${fmt(info.stacks)}`;
     mergeText = info.maxed
@@ -572,7 +572,7 @@ function showGeneCard() {
   let mergeLabel;
   let mergeProgress = info.merge || 0;
   if (info.kind === 'full') {
-    mergeLabel = 'No free gene slot';
+    mergeLabel = 'All gene slots are full';
     mergeProgress = 0;
   } else if (info.kind === 'upgrade') {
     mergeLabel = 'Quality upgraded · merge reset';
@@ -666,7 +666,7 @@ window.addEventListener('keydown', (event) => {
 });
 
 // ---------------------------------------------------------------------------
-// Talent offer (every three minutes)
+// Talent offer (every minute)
 // ---------------------------------------------------------------------------
 /**
  * Visual categories for the draft cards. The category is derived from the
@@ -752,7 +752,7 @@ function showTalentOffer() {
       const rank = talents.levelOf(talent);
       const now = formatTalentEffect(talentEffectAt(talent, rank));
       const nextRankLevel = nextTalentRankLevel(talents.heroLevel, talent);
-      const badge = `<span class="talent-new">Lv.${rank}</span>`;
+      const badge = `<span class="talent-new">Rank ${rank}</span>`;
       const toneKey = talentTone(talent);
       const tone = TALENT_TONES[toneKey];
 
@@ -771,7 +771,7 @@ function showTalentOffer() {
         `  <span class="talent-blurb">${talent.blurb}</span>`,
         '  <span class="talent-foot">',
         `    <span class="talent-rank-note">${
-          nextRankLevel ? `Rank ${rank + 1} at Lv.${nextRankLevel}` : 'Max rank'
+          nextRankLevel ? `Rank ${rank + 1} at hero level ${nextRankLevel}` : 'Max rank'
         }</span>`,
         `    <span class="talent-pick">Select <b>${index + 1}</b></span>`,
         '  </span>',
@@ -788,7 +788,7 @@ function showTalentOffer() {
   talentCard.innerHTML = [
     '<div class="talent-box" tabindex="-1">',
     '  <div class="talent-kicker">',
-    '    <span class="talent-tier">Talent Awakening</span>',
+    '    <span class="talent-tier">Talent Draft</span>',
     `    <span class="talent-slots" aria-label="${filled} of ${talents.slotCount} talent slots filled">${slots}</span>`,
     '  </div>',
     '  <div class="talent-title">Choose one</div>',
@@ -885,12 +885,12 @@ document.body.appendChild(pauseMenu);
 function renderPauseMenu() {
   const controls = [
     ['Arrow keys', 'Hop around the board'],
-    ['Space', 'Tongue blast — hold to keep firing'],
-    ['E', 'Awakening — spent from the charge bar'],
+    ['Space', 'Tongue blast — hold to keep attacking'],
+    ['E', 'Awakening — spend a charge'],
     ['1 / 2 / 3', 'Pick a talent card'],
     ['Esc', 'Decline the talent offer'],
-    ['F', 'Take the gene on the ground'],
-    ['G / Esc', 'Skip that gene'],
+    ['F', 'Take the gene orb'],
+    ['G / Esc', 'Skip the gene orb'],
     ['C', 'Character panel — your live stats'],
     ['P / Esc', 'Pause and resume'],
     ['M', 'Mute or unmute sound'],
@@ -918,9 +918,9 @@ function renderPauseMenu() {
     '  <div class="pause-section">',
     '    <div class="pause-label">Credits</div>',
     '    <div class="pause-credits">',
-    '      <p><b>Tode</b> &mdash; JetBrains Academy course asset, used under the MIT course scaffold.</p>',
+    '      <p><b>Tode</b> &mdash; JetBrains Academy course asset, used with the MIT-licensed course scaffold.</p>',
     '      <p><b>Small House</b> &mdash; Jarlan Perez, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>, via <a href="https://poly.pizza/m/053kskrV4U_" target="_blank" rel="noopener">Poly Pizza</a>. Converted to glTF and scaled in-engine.</p>',
-    '      <p><b>Audio</b> &mdash; synthesised at runtime with the Web Audio API; no recordings.</p>',
+    '      <p><b>Audio</b> &mdash; generated at runtime with the Web Audio API; no recordings are used.</p>',
     '      <p><b>Code</b> &mdash; MIT; three.js and Vite are MIT. Full credits in <a href="https://github.com/wudhx/tode-talent-awakening/blob/main/CREDITS.md" target="_blank" rel="noopener">CREDITS.md</a>.</p>',
     '    </div>',
     '  </div>',
@@ -1031,7 +1031,7 @@ function renderCharPanel() {
           // but "which hero level buys it".
           const nextRankLevel = nextTalentRankLevel(talents.heroLevel, entry);
           const next = nextRankLevel
-            ? `Rank ${rank + 1} at hero Lv.${nextRankLevel}: ${formatTalentEffect(
+            ? `Rank ${rank + 1} at hero level ${nextRankLevel}: ${formatTalentEffect(
                 talentEffectAt(entry, rank + 1)
               )}`
             : 'Maxed';
@@ -1039,7 +1039,7 @@ function renderCharPanel() {
             '<div class="char-talent">' +
             '<div class="char-talent-head">' +
             `<b>${entry.name}</b>` +
-            `<span class="char-talent-level">Lv.${rank} / ${max}</span>` +
+            `<span class="char-talent-level">Rank ${rank} / ${max}</span>` +
             '</div>' +
             `<div class="lvl-pips">${pips}</div>` +
             // The green line is what the hero has right now — it is read from
@@ -1051,8 +1051,8 @@ function renderCharPanel() {
         })
         .join('')
     : '<div class="char-talent empty">' +
-      `No talents yet — ${talents.slotCount} slots, one offered every ${TALENT_INTERVAL}s. ` +
-      'Ranks rise with your level.</div>';
+      `No talents yet. You have ${talents.slotCount} slots, and a new offer appears ` +
+      `every ${TALENT_INTERVAL}s. Talent ranks rise with your level.</div>`;
 
   const awakenText = awakening.active
     ? `Active · ${awakening.remaining.toFixed(1)}s left`
@@ -1096,7 +1096,12 @@ function renderCharPanel() {
 
   const stats = [
     row('Level', `${health.level} / 15`, [
-      ['Next', health.level < 15 ? `${Math.ceil(health.hp)} / ${health.level * 100} HP` : 'Max'],
+      [
+        'Next level',
+        health.level < 15
+          ? `${Math.round(health.maxHp)} / ${(health.level + 1) * 100} max HP`
+          : 'Max',
+      ],
     ]),
     row('Health', `${Math.ceil(health.hp)} / ${Math.round(health.maxHp)}`, [
       ['Base', '100'],
@@ -1111,7 +1116,7 @@ function renderCharPanel() {
       ['Genes', geneStats.attackPower ? signed(geneStats.attackPower) : null],
       ['Talents', talentStats.attackPower ? signed(talentStats.attackPower) : null],
       ['Boss', bossBonus.attack ? signed(bossBonus.attack) : null],
-      playerStats.awakened ? ['Awaken', 'x3'] : null,
+      playerStats.awakened ? ['Awakening', 'x3'] : null,
     ]),
     row('Damage reduction', pct(playerStats.damageReduction), [
       ['Levels', signed(levelReduction * 100, '%')],
@@ -1129,7 +1134,7 @@ function renderCharPanel() {
       ['Base', '—'],
       ['Genes', geneStats.attackRange ? signed(geneStats.attackRange) : null],
       ['Talents', talentStats.attackRange ? signed(talentStats.attackRange) : null],
-      playerStats.awakened ? ['Awaken', 'x1.6'] : null,
+      playerStats.awakened ? ['Awakening', 'x1.6'] : null,
     ]),
     row('Attack cooldown', `${playerStats.attackCooldown.toFixed(2)}s`, [
       ['Genes', geneStats.cooldownMult ? `${signed(geneStats.cooldownMult * 100, '%')}` : null],
@@ -1536,7 +1541,7 @@ function renderBossBar() {
 }
 
 /**
- * Awards a random permanent stat bonus for downing a boss.
+ * Awards a random run-long stat bonus for downing a boss.
  *
  * Later bosses roll bigger numbers, and the roll is weighted upward each time
  * so the reward keeps pace with the difficulty curve.
@@ -1555,10 +1560,11 @@ function grantBossBonus() {
   health.growMaxHp(hpGain);
 
   hud.showAction(
-    `Boss slain: +${hpGain} HP · +${atkGain.toFixed(1)} ATK · +${(defGain * 100).toFixed(0)}% DEF`,
+    `Boss slain: +${hpGain} max HP · +${atkGain.toFixed(1)} attack power · ` +
+      `+${(defGain * 100).toFixed(0)}% damage reduction`,
     'boss',
     '#ffc83d',
-    2600
+    3000
   );
 }
 
@@ -1966,7 +1972,7 @@ function gameLoop() {
   if (talents.syncHeroLevel(level)) {
     renderTalentPips();
     if (talents.owned.length > 0) {
-      hud.showAction(`Talents reached rank ${talentLevelFor(level)}`, 'talent', '#43b96b', 1400);
+      hud.showAction(`Talent rank increased to ${talentLevelFor(level)}`, 'talent', '#43b96b', 1400);
     }
   }
   const talentStats = talents.stats();
@@ -2067,8 +2073,8 @@ function gameLoop() {
     }
   }
 
-  // Offer a talent every three minutes. `update` only ticks while no offer is
-  // open, so a declined offer returns exactly one interval later.
+  // Offer a talent every minute. `update` only ticks while no offer is open, so
+  // a declined offer returns exactly one interval later.
   const talentDue = talents.update(delta);
   if (talentDue) {
     sound.awaken();
@@ -2204,7 +2210,7 @@ function gameLoop() {
         f.regrowTimer = FLOWER_REGROW;
         const spot = findFlowerDropSpot(f.position.x, f.position.y);
         powerUps.spawnAt(spot.x, spot.y, ['speed', 'range', 'freeze', 'shield'], 1.5);
-        hud.showAction('A flower blooms into a 1.5x power-up!', 'flower', '#ff6b9d');
+        hud.showAction('The flower drops a 1.5x power-up!', 'flower', '#ff6b9d');
         sound.powerUp();
         flowerState.flower = null;
         flowerState.timer = 0;
@@ -2347,7 +2353,7 @@ function gameLoop() {
         key: 'bush',
         tone: 'danger',
         text: inBush.cooldown > 0
-          ? `This bush is blown · ${Math.ceil(inBush.cooldown)}s`
+          ? `This bush is spent · ${Math.ceil(inBush.cooldown)}s`
           : 'Spotted!',
       };
     } else {
@@ -2370,7 +2376,7 @@ function gameLoop() {
       : {
           key: 'pond',
           tone: 'active',
-          text: `In the water: +${Math.round(POND_HEAL_PERCENT * 100)}% HP/s, ${Math.round(POND_DAMAGE_SOAK * 100)}% damage soaked`,
+          text: `In the water: +${Math.round(POND_HEAL_PERCENT * 100)}% HP/s, absorbing ${Math.round(POND_DAMAGE_SOAK * 100)}% of incoming damage`,
         };
   }
 
@@ -2394,12 +2400,12 @@ function gameLoop() {
       ? {
           key: 'flower',
           tone: 'active',
-          text: `Blooming · ${Math.max(0, FLOWER_HARVEST_TIME - flowerState.timer).toFixed(1)}s to go`,
+          text: `Harvesting · ${Math.max(0, FLOWER_HARVEST_TIME - flowerState.timer).toFixed(1)}s left`,
         }
       : {
           key: 'flower',
           tone: 'ready',
-          text: `Stay ${FLOWER_HARVEST_TIME}s to bloom a 1.5x power-up`,
+          text: `Stay ${FLOWER_HARVEST_TIME}s to harvest a 1.5x power-up`,
         };
   }
 
@@ -2410,12 +2416,12 @@ function gameLoop() {
         ? {
             key: 'tree',
             tone: 'cooldown',
-            text: `This tree is resting · ${Math.ceil(tree.cooldown)}s`,
+            text: `This tree is recovering · ${Math.ceil(tree.cooldown)}s`,
           }
         : {
             key: 'tree',
             tone: 'ready',
-            text: 'Tongue-blast (Space) a fruit tree to knock fruit loose',
+            text: 'Hit a fruit tree with your tongue blast (Space) to knock fruit loose',
           };
     }
   }
@@ -2428,7 +2434,7 @@ function gameLoop() {
   const picked = powerUps.update(delta, player.position, isPowerUpSpotFree);
   for (const type of picked) {
     if (type.key === 'heart') {
-      health.addMaxHp(1);
+      health.addMaxHp(HEART_PICKUP);
       sound.heal();
     } else if (type.key === 'bomb') {
       enemies.forEach((enemy) => enemy.dispose());
@@ -2488,7 +2494,7 @@ function gameLoop() {
           // And it may drop a gene orb of that species.
           genes.maybeDrop(enemy, runTime, enemy.boss);
 
-          // Bosses pay out a permanent stat bonus on top of the orb.
+          // Bosses pay out a run-long stat bonus on top of the orb.
           if (enemy.boss) {
             if (boss === enemy) boss = null;
             renderBossBar();
@@ -2540,7 +2546,7 @@ function gameLoop() {
     if (eaten > 0) {
       health.addRegen(FRUIT_REGEN_RATE, FRUIT_REGEN_DURATION, 'Fed');
       hud.showAction(
-        `Fruit eaten: regenerating for ${FRUIT_REGEN_DURATION}s`,
+        `Fruit eaten: healing for ${FRUIT_REGEN_DURATION}s`,
         'fruit',
         '#e5484d'
       );
@@ -2594,7 +2600,7 @@ function gameLoop() {
           );
         }
       }
-      hud.showAction('The boss calls its brood!', 'boss', '#ff3d6e', 1500);
+      hud.showAction('The boss summons its brood!', 'boss', '#ff3d6e', 1500);
     }
     renderBossBar();
     updateBossAbility(delta);
@@ -2651,7 +2657,7 @@ function gameLoop() {
             house.registerHit();
             sound.houseHit();
             if (destroyed) {
-              hud.showAction('A house has been destroyed!', 'house', '#e5484d', 2500);
+              hud.showAction('A house was destroyed!', 'house', '#e5484d', 2500);
               // The ruin is gone from the scene; drop it from the enemy
               // collision list so insects stop pathing around a hole.
               enemyObstacles = enemyObstacles.filter((o) => o !== house);
@@ -2673,7 +2679,7 @@ function gameLoop() {
           bushState.bush.alive = false;
           bushState.bush.group.visible = false;
           bushState.bush.regrowTimer = 25; // bushes take longer to regrow than flowers
-          hud.showAction('A bush was torn apart', 'bush', '#ff6b6b');
+          hud.showAction('A bush was torn apart!', 'bush', '#ff6b6b');
           sound.hurt();
         }
       }
@@ -2947,7 +2953,7 @@ function updateBossAbility(delta) {
     if (collidesWithObstacle(probe, enemyObstacles, boss.radius * 0.6)) {
       // Slammed into a tree or a wall: the charge ends early.
       boss.abilityPhaseTimer = 0;
-      hud.showAction('The charge crashes into the scenery!', 'boss', '#ffd166', 1200);
+      hud.showAction('The charge slams into an obstacle!', 'boss', '#ffd166', 1200);
     } else {
       boss.group.position.x = probe.x;
       boss.group.position.y = probe.y;
@@ -2965,7 +2971,7 @@ function updateBossAbility(delta) {
           hurtHero(boss.contactDamage * ability.damageMult, {
             ignoreInvulnerability: true,
           });
-          hud.showAction('Charged!', 'boss', ability.color, 900);
+          hud.showAction('The charge connects!', 'boss', ability.color, 900);
         }
       }
     }

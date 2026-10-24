@@ -76,7 +76,7 @@ export const TALENTS = [
   {
     key: 'ironWall',
     name: 'Iron Wall',
-    blurb: 'You plant yourself and let the hits land.',
+    blurb: 'You brace yourself and take the hits.',
     effect: { damageReduction: 0.06, moveSpeed: -0.05 },
     perLevel: { damageReduction: 0.03, moveSpeed: -0.01 },
     describe: '+6% damage reduction, -5% move speed',
@@ -92,7 +92,7 @@ export const TALENTS = [
   {
     key: 'quickDraw',
     name: 'Quick Draw',
-    blurb: 'The tongue is back out before the last strike fades.',
+    blurb: 'You recover between lashes faster.',
     effect: { cooldownMult: -0.12 },
     perLevel: { cooldownMult: -0.05 },
     describe: '-12% attack cooldown',
@@ -108,7 +108,7 @@ export const TALENTS = [
   {
     key: 'bloodFeast',
     name: 'Blood Feast',
-    blurb: 'Every kill feeds you a little.',
+    blurb: 'Every hit feeds you a little.',
     effect: { lifesteal: 0.05 },
     perLevel: { lifesteal: 0.025 },
     describe: '+5% lifesteal',
@@ -132,7 +132,7 @@ export const TALENTS = [
   {
     key: 'shieldShell',
     name: 'Shield Shell',
-    blurb: 'A thin membrane of water clings to your back.',
+    blurb: 'A thin film of water coats your back.',
     effect: { shieldMaxPercent: 0.15 },
     perLevel: { shieldMaxPercent: 0.07 },
     describe: '+15% max shield, refilled',
@@ -143,12 +143,12 @@ export const TALENTS = [
     blurb: 'You waste nothing, not even the scraps.',
     effect: { scoreMult: 0.15 },
     perLevel: { scoreMult: 0.1 },
-    describe: '+15% score from every kill',
+    describe: '+15% kill score',
   },
   {
     key: 'hunterInstinct',
     name: 'Hunter Instinct',
-    blurb: 'You spot the weak ones first.',
+    blurb: 'You strike harder and reach farther.',
     effect: { attackPower: 0.5, attackRange: 40 },
     perLevel: { attackPower: 0.4, attackRange: 30 },
     describe: '+0.5 attack power, +40 attack range',
@@ -164,10 +164,10 @@ export const TALENTS = [
   {
     key: 'frenzy',
     name: 'Frenzy',
-    blurb: 'You fire faster every time you are cornered.',
+    blurb: 'You lash out faster, and each strike hits harder.',
     effect: { cooldownMult: -0.08, attackPower: 0.5 },
     perLevel: { cooldownMult: -0.04, attackPower: 0.3 },
-    describe: '-8% cooldown, +0.5 attack power',
+    describe: '-8% attack cooldown, +0.5 attack power',
   },
   {
     key: 'vitality',
@@ -180,7 +180,7 @@ export const TALENTS = [
   {
     key: 'lucky',
     name: 'Lucky',
-    blurb: 'Fortune follows you. One more gene can be locked in.',
+    blurb: 'Fortune follows you. You can lock in one more gene.',
     effect: { extraGeneSlot: 1 },
     perLevel: {},
     /** Lucky does not stack: the slot is the whole effect. */
@@ -193,7 +193,7 @@ export const TALENTS = [
     blurb: 'You hit the big ones where it hurts.',
     effect: { attackPower: 1.5, damageReduction: -0.03 },
     perLevel: { attackPower: 0.8, damageReduction: -0.01 },
-    describe: '+1.5 attack power, -3% damage reduction',
+    describe: '+1.5 attack power, 3% more damage taken',
   },
 ];
 
@@ -278,7 +278,7 @@ export function talentEffectAt(talent, level = 1) {
 }
 
 /**
- * Formats an effect bag as a human sentence, e.g. "+2 attack power, +180 range".
+ * Formats an effect bag as a human sentence, e.g. "+2 attack power, +180 attack range".
  *
  * @param {Record<string, number>} effect
  * @returns {string}
@@ -290,28 +290,32 @@ export function formatTalentEffect(effect) {
     const sign = value > 0 ? '+' : '';
     switch (key) {
       case 'attackPower':
-        parts.push(`${sign}${trim(value)} attack`);
+        parts.push(`${sign}${trim(value)} attack power`);
         break;
       case 'damageReduction':
-        parts.push(`${sign}${trim(value * 100)}% reduction`);
+        parts.push(
+          value < 0
+            ? `${trim(-value * 100)}% more damage taken`
+            : `${sign}${trim(value * 100)}% damage reduction`
+        );
         break;
       case 'lifesteal':
         parts.push(`${sign}${trim(value * 100)}% lifesteal`);
         break;
       case 'attackRange':
-        parts.push(`${sign}${trim(value)} range`);
+        parts.push(`${sign}${trim(value)} attack range`);
         break;
       case 'cooldownMult':
-        parts.push(`${sign}${trim(value * 100)}% cooldown`);
+        parts.push(`${sign}${trim(value * 100)}% attack cooldown`);
         break;
       case 'moveSpeed':
-        parts.push(`${sign}${trim(value * 100)}% speed`);
+        parts.push(`${sign}${trim(value * 100)}% move speed`);
         break;
       case 'maxHp':
         parts.push(`${sign}${Math.round(value)} max HP`);
         break;
       case 'scoreMult':
-        parts.push(`${sign}${trim(value * 100)}% score`);
+        parts.push(`${sign}${trim(value * 100)}% kill score`);
         break;
       case 'shieldMaxPercent':
         parts.push(`${sign}${trim(value * 100)}% max shield`);

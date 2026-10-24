@@ -12,7 +12,7 @@ Built with assistance from:
 | Tool | Used for |
 |---|---|
 | **JetBrains Junie** (in WebStorm) | The twelve course tasks: scene setup, hop movement, enemy spawning, collision, attack, scoring, difficulty scaling. |
-| **WorkBuddy AI** | The expansion on top of the course build: hero levels and HP, talent draft and rank table, genes and merging, awakening charges, boss profiles and signature abilities, HUD and character sheet, balance tuning, and the Playwright smoke suite. |
+| **WorkBuddy AI** | The expansion on top of the course build: hero levels and HP, talent draft and rank table, genes and merging, Awakening charges, boss profiles and signature abilities, HUD and character sheet, balance tuning, and the Playwright smoke suite. |
 
 All requirements, design decisions, review and playtesting were done by the author.
 
@@ -21,8 +21,8 @@ All requirements, design decisions, review and playtesting were done by the auth
 The game is based on the JetBrains Academy course
 *Build a Game with an AI Coding Agent* ([course 30327](https://academy.jetbrains.com/course/30327)).
 
-- `game/public/models/tode.glb` — course-provided hero asset, used under the course
-  scaffold. The scaffold ships under the MIT license in [`LICENSE`](LICENSE);
+- `game/public/models/tode.glb` — course-provided hero asset, used for this course
+  project. The scaffold ships under the MIT license in [`LICENSE`](LICENSE);
   copyright (c) 2025 JetBrains Academy.
 
 ## Third-party 3D assets
@@ -35,7 +35,7 @@ No other third-party art, fonts, music or sound recordings are used.
 
 ## Audio
 
-Every sound is synthesised at runtime with the Web Audio API
+Every sound is generated at runtime with the Web Audio API
 (`game/src/components/Sound.js`). There are no audio files in the repository and no
 commercial recordings.
 

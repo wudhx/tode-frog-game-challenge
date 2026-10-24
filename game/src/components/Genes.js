@@ -3,8 +3,9 @@ import * as THREE from 'three';
 /**
  * Gene system: killing an insect can drop a gene orb of that species. Orbs
  * carry a quality tier (common / rare / legendary). Picking one up locks that
- * species into a permanent slot and adds a stack; three same-tier pickups
- * upgrade the tier, and a higher-tier drop upgrades immediately.
+ * species into a slot for the rest of the run and adds a stack; three
+ * same-tier pickups upgrade the tier, and a higher-tier drop upgrades
+ * immediately.
  *
  * Only the highest three (or however many slots are unlocked) species count,
  * and each slot must be a different species.
@@ -116,7 +117,7 @@ export const LEGENDARY_STACK_KILLS = 30;
 export const LEGENDARY_ORB_SCORE = 40;
 /** Shown on every gene card so stacking is never a mystery. */
 export const STACK_RULE =
-  'Three pickups of the same quality upgrade the gene. Upgrading converts your stacks so the total bonus stays the same.';
+  'Collect three orbs of the same quality to upgrade the gene. Your stacks are converted so the total bonus stays the same.';
 
 /**
  * Formats the per-stack gain for the pickup card.
@@ -133,7 +134,7 @@ export function formatPerLayer(cfg, tier) {
     case 'lifesteal':
       return `Each stack: +${(per * 100).toFixed(1)}% lifesteal`;
     case 'damageReduction':
-      return `Each stack: -${(per * 100).toFixed(1)}% damage taken`;
+      return `Each stack: +${(per * 100).toFixed(1)}% damage reduction`;
     case 'attackRange':
       return `Each stack: +${per} attack range`;
     case 'maxHp':
@@ -367,7 +368,7 @@ export class GeneSystem {
 
   /**
    * Once every slot is legendary, orbs stop dropping. Kills still feed the
-   * build: every 20 kills (or any elite kill) adds one stack to the locked
+   * build: every 30 kills (or any elite kill) adds one stack to the locked
    * gene with the fewest stacks, so the build keeps growing without popups.
    *
    * @param {boolean} [isElite]

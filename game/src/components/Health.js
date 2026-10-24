@@ -6,7 +6,7 @@
  * regeneration and its 20% soak both need — a row of whole hearts could not
  * express "healed 3 HP this second" without a half-heart renderer.
  *
- * The pool starts at 100 and grows by 20 for every Heart pickup, up to 200.
+ * The pool starts at 100 and grows by 20 for every Heart pickup.
  */
 
 /** HP the hero starts a run with. */
@@ -89,8 +89,8 @@ export class Health {
   }
 
   /**
-   * Permanently raises the pool and restores the same amount. Used by the
-   * Heart pickup, so health can be built up over a run.
+   * Raises the pool for the rest of the run and restores the same amount. Used
+   * by the Heart pickup, so health can be built up over a run.
    *
    * @param {number} [amount] HP to add to the maximum.
    */
