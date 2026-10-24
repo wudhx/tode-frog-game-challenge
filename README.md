@@ -56,8 +56,9 @@ then start again.
 
 ## Screens
 
-**The talent draft.** Three cards, one pick, every minute. Each card shows the rank you
-would get right now, and the hero level that unlocks the next one.
+**The talent draft.** Three cards, one pick, every minute. Cards are colour-coded by role —
+offense, defense, mobility, fortune — and each shows the rank you would get right now plus
+the hero level that unlocks the next one.
 
 <a href="https://cdn.jsdelivr.net/gh/wudhx/tode-talent-awakening@main/docs/screenshots/talent-offer.png"><img src="https://cdn.jsdelivr.net/gh/wudhx/tode-talent-awakening@main/docs/screenshots/talent-offer.png" width="700" alt="Talent draft — three cards, pick one"></a>
 

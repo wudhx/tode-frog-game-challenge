@@ -19,9 +19,9 @@ export const PICKUP_RADIUS = 62;
  * away; the magnet keeps the grab point explicit while removing the need to
  * land on the exact centre of the marker.
  */
-export const PICKUP_MAGNET_RADIUS = 150;
-/** How fast the magnet pulls, in world units per second at the inner edge. */
-export const PICKUP_MAGNET_SPEED = 320;
+export const PICKUP_MAGNET_RADIUS = 260;
+/** Pull speed at full strength, in world units per second. */
+export const PICKUP_MAGNET_SPEED = 720;
 /** Height the icons float at, in world units. */
 export const POWERUP_FLOAT = 46;
 
@@ -465,14 +465,20 @@ export class PowerUpManager {
       // Pull nearby pickups in. The pull eases to zero at the outer edge, so
       // the pickup starts drifting rather than snapping sideways.
       if (distance > PICKUP_RADIUS && distance < PICKUP_MAGNET_RADIUS) {
-        const pull =
-          (1 - distance / PICKUP_MAGNET_RADIUS) * PICKUP_MAGNET_SPEED * delta;
+        const strength = 1 - distance / PICKUP_MAGNET_RADIUS;
+        const pull = strength * PICKUP_MAGNET_SPEED * delta;
         pickup.position.x -= (dx / distance) * pull;
         pickup.position.y -= (dy / distance) * pull;
+
+        // The marker swells as the pull strengthens, so the magnet is
+        // visible instead of silently sliding the icon a few units.
+        pickup.marker.scale.setScalar(1 + strength * 0.35);
 
         dx = pickup.position.x - playerPosition.x;
         dy = pickup.position.y - playerPosition.y;
         distance = Math.hypot(dx, dy);
+      } else {
+        pickup.marker.scale.setScalar(1);
       }
 
       if (distance <= PICKUP_RADIUS) {

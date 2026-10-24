@@ -574,8 +574,67 @@ window.addEventListener('keydown', (event) => {
 // ---------------------------------------------------------------------------
 // Talent offer (every three minutes)
 // ---------------------------------------------------------------------------
+/**
+ * Visual categories for the draft cards. The category is derived from the
+ * talent's effect, so adding a talent does not require editing a second table.
+ * Icons are inline SVG: no external art or icon font is used.
+ */
+const TALENT_TONES = {
+  offense: {
+    label: 'Offense',
+    icon:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M13 2 4.5 13.5H11l-1 8.5L19.5 10H13V2Z"/></svg>',
+  },
+  guard: {
+    label: 'Defense',
+    icon:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M12 3 5 6v5.4c0 4.6 2.9 8 7 9.6 4.1-1.6 7-5 7-9.6V6l-7-3Z"/>' +
+      '<path d="m9 12 2 2 4-4"/></svg>',
+  },
+  mobility: {
+    label: 'Mobility',
+    icon:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M4 12h15"/><path d="m14 6 6 6-6 6"/></svg>',
+  },
+  fortune: {
+    label: 'Fortune',
+    icon:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="m12 2.5 2.8 6 6.7.8-5 4.4 1.4 6.6-5.9-3.4-5.9 3.4 1.4-6.6-5-4.4 6.7-.8 2.8-6Z"/></svg>',
+  },
+  utility: {
+    label: 'Utility',
+    icon:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3"/></svg>',
+  },
+};
+
+/**
+ * Picks the card category that best describes a talent's effect.
+ *
+ * @param {object} talent Entry from TALENTS.
+ * @returns {keyof typeof TALENT_TONES}
+ */
+function talentTone(talent) {
+  const effect = talent.effect || {};
+  if (effect.extraGeneSlot || effect.scoreMult) return 'fortune';
+  if (effect.moveSpeed && !effect.damageReduction) return 'mobility';
+  if (effect.attackPower || effect.cooldownMult || effect.attackRange) return 'offense';
+  if (effect.damageReduction || effect.maxHp || effect.shieldMaxPercent || effect.lifesteal) {
+    return 'guard';
+  }
+  return 'utility';
+}
+
 const talentCard = document.createElement('div');
 talentCard.className = 'talent-card';
+talentCard.setAttribute('role', 'dialog');
+talentCard.setAttribute('aria-modal', 'true');
+talentCard.setAttribute('aria-label', 'Choose a talent');
 talentCard.style.display = 'none';
 document.body.appendChild(talentCard);
 
@@ -587,6 +646,7 @@ function showTalentOffer() {
   paused = true;
   attack.enabled = false;
   player.stop();
+  delete talentCard.dataset.resolving;
   talentCard.style.display = 'flex';
 
   const cards = offer
@@ -599,39 +659,80 @@ function showTalentOffer() {
       const now = formatTalentEffect(talentEffectAt(talent, rank));
       const nextRankLevel = nextTalentRankLevel(talents.heroLevel, talent);
       const badge = `<span class="talent-new">Lv.${rank}</span>`;
-      return (
-        '<button class="talent-choice" data-index="' + index + '">' +
-        '  <div class="talent-key">' + (index + 1) + '</div>' +
+      const toneKey = talentTone(talent);
+      const tone = TALENT_TONES[toneKey];
+
+      return [
+        `<button class="talent-choice" type="button" data-index="${index}" data-tone="${toneKey}" style="--i:${index}">`,
+        '  <span class="talent-head">',
+        `    <span class="talent-icon" aria-hidden="true">${tone.icon}</span>`,
+        `    <span class="talent-key">${index + 1}</span>`,
+        '  </span>',
+        `  <span class="talent-watermark" aria-hidden="true">${tone.icon}</span>`,
+        `  <span class="talent-tone">${tone.label}</span>`,
         // The name carries its own data attribute so the badge next to it can
         // change shape without anyone having to parse the visible text.
-        `  <div class="talent-name" data-name="${talent.name}">${talent.name}${badge}</div>` +
-        `  <div class="talent-effect">${now}</div>` +
-        '  <div class="talent-blurb">' + talent.blurb + '</div>' +
-        (nextRankLevel
-          ? `  <div class="talent-rank-note">Rank ${rank + 1} at hero Lv.${nextRankLevel}</div>`
-          : '  <div class="talent-rank-note">Already at max rank</div>') +
-        '</button>'
-      );
+        `  <span class="talent-name" data-name="${talent.name}">${talent.name}${badge}</span>`,
+        `  <span class="talent-effect">${now}</span>`,
+        `  <span class="talent-blurb">${talent.blurb}</span>`,
+        '  <span class="talent-foot">',
+        `    <span class="talent-rank-note">${
+          nextRankLevel ? `Rank ${rank + 1} at Lv.${nextRankLevel}` : 'Max rank'
+        }</span>`,
+        `    <span class="talent-pick">Select <b>${index + 1}</b></span>`,
+        '  </span>',
+        '</button>',
+      ].join('');
     })
     .join('');
 
   const filled = talents.owned.length;
+  const slots = Array.from({ length: talents.slotCount }, (_, index) =>
+    `<span class="talent-slot${index < filled ? ' filled' : ''}"></span>`
+  ).join('');
+
   talentCard.innerHTML = [
-    '<div class="talent-box">',
-    '  <div class="talent-tier">Talent Awakening</div>',
+    '<div class="talent-box" tabindex="-1">',
+    '  <div class="talent-kicker">',
+    '    <span class="talent-tier">Talent Awakening</span>',
+    `    <span class="talent-slots" aria-label="${filled} of ${talents.slotCount} talent slots filled">${slots}</span>`,
+    '  </div>',
     '  <div class="talent-title">Choose one</div>',
     '  <div class="talent-sub">' +
       'Talent ' + (filled + 1) + ' of ' + talents.slotCount +
       ' · locked in for the rest of this run</div>',
     '  <div class="talent-choices">' + cards + '</div>',
-    '  <button class="talent-skip">Skip this one <kbd>Esc</kbd></button>',
+    '  <button class="talent-skip" type="button">Skip this offer <kbd>Esc</kbd></button>',
     '</div>',
   ].join('');
 
   for (const button of talentCard.querySelectorAll('.talent-choice')) {
-    button.onclick = () => resolveTalent(Number(button.dataset.index));
+    button.onclick = () => chooseTalent(Number(button.dataset.index));
   }
-  talentCard.querySelector('.talent-skip').onclick = () => resolveTalent(-1);
+  talentCard.querySelector('.talent-skip').onclick = () => chooseTalent(-1);
+
+  // Focus the dialog itself, not the first card: a reflex Space (the attack
+  // key) must not silently pick card 1. Tab reaches the cards normally.
+  const box = talentCard.querySelector('.talent-box');
+  if (box) box.focus();
+}
+
+/**
+ * Plays the pick animation before resolving the offer.
+ *
+ * @param {number} index Index into the current offer, or -1 to skip.
+ */
+function chooseTalent(index) {
+  if (talentCard.dataset.resolving === '1') return;
+  talentCard.dataset.resolving = '1';
+
+  const selector = index >= 0 ? `.talent-choice[data-index="${index}"]` : '.talent-skip';
+  const button = talentCard.querySelector(selector);
+  if (button) button.classList.add('is-picked');
+
+  // Short enough to feel instant, long enough for the selected card to flash
+  // gold before the overlay disappears.
+  window.setTimeout(() => resolveTalent(index), index >= 0 ? 160 : 70);
 }
 
 /**
@@ -640,6 +741,7 @@ function showTalentOffer() {
  * @param {number} index Index into the current offer, or -1 to skip.
  */
 function resolveTalent(index) {
+  delete talentCard.dataset.resolving;
   const taken = talents.resolve(index);
   talentCard.style.display = 'none';
   paused = false;
@@ -660,10 +762,10 @@ window.addEventListener('keydown', (event) => {
   const digit = { Digit1: 0, Digit2: 1, Digit3: 2 }[event.code];
   if (digit !== undefined) {
     event.preventDefault();
-    resolveTalent(digit);
+    chooseTalent(digit);
   } else if (event.code === 'Escape' || event.code === 'KeyG') {
     event.preventDefault();
-    resolveTalent(-1);
+    chooseTalent(-1);
   }
 });
 

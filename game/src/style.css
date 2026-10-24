@@ -1099,6 +1099,12 @@ canvas.game {
 }
 
 /* --- Talent offer card --------------------------------------------------- */
+.talent-card,
+.talent-box,
+.talent-choice {
+  box-sizing: border-box;
+}
+
 .talent-card {
   position: fixed;
   inset: 0;
@@ -1106,133 +1112,460 @@ canvas.game {
   display: none;
   align-items: center;
   justify-content: center;
-  background: rgba(10, 20, 12, 0.68);
+  padding: 24px;
+  overflow-y: auto;
+  background:
+    radial-gradient(ellipse at 50% 10%, rgba(255, 209, 102, 0.16), transparent 42%),
+    radial-gradient(ellipse at 50% 55%, rgba(30, 78, 50, 0.55), rgba(3, 9, 6, 0.9) 72%);
+  backdrop-filter: blur(8px);
   font-family: inherit;
   user-select: none;
+  animation: talentFade 0.18s ease-out;
 }
 
 .talent-box {
-  width: min(760px, calc(100vw - 40px));
-  padding: 26px 28px 22px;
-  border-radius: 20px;
-  background: #f7faf6;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
-  text-align: center;
+  position: relative;
+  width: min(880px, 100%);
+  max-height: calc(100vh - 48px);
+  padding: 24px 26px 20px;
+  border: 1px solid rgba(255, 211, 120, 0.22);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(99, 214, 160, 0.08), transparent 38%),
+    linear-gradient(155deg, rgba(21, 46, 32, 0.98), rgba(7, 17, 12, 0.99));
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: #e9f3ea;
+  text-align: left;
+  overflow: auto;
+  animation: talentBoxIn 0.32s cubic-bezier(0.18, 1, 0.3, 1);
+}
+
+.talent-box:focus {
+  outline: none;
+}
+
+.talent-box::before {
+  content: '';
+  position: absolute;
+  inset: -45% -10% auto;
+  height: 220px;
+  background: radial-gradient(ellipse at 50% 0%, rgba(255, 209, 102, 0.2), transparent 70%);
+  pointer-events: none;
+}
+
+.talent-box > * {
+  position: relative;
+  z-index: 1;
+}
+
+.talent-kicker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .talent-tier {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #b8873a;
+  color: #e8b85e;
+}
+
+.talent-slots {
+  display: flex;
+  gap: 5px;
+}
+
+.talent-slot {
+  width: 18px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.talent-slot.filled {
+  background: linear-gradient(90deg, #ffd166, #ff9a3c);
+  box-shadow: 0 0 10px rgba(255, 180, 60, 0.4);
 }
 
 .talent-title {
-  margin-top: 6px;
-  font-size: 26px;
-  font-weight: 800;
-  color: #1b4332;
+  margin-top: 8px;
+  font-size: clamp(27px, 4vw, 34px);
+  line-height: 1.05;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  color: #fff3cf;
+  text-shadow: 0 0 24px rgba(255, 190, 70, 0.18);
 }
 
 .talent-sub {
-  margin-top: 4px;
+  margin-top: 6px;
   font-size: 12px;
   font-weight: 600;
-  color: rgba(27, 67, 50, 0.6);
+  color: rgba(220, 240, 220, 0.62);
 }
 
 .talent-choices {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin-top: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.talent-choice[data-tone='offense'] {
+  --tone: #ff8a66;
+  --tone-soft: rgba(255, 138, 102, 0.16);
+  --tone-line: rgba(255, 138, 102, 0.42);
+}
+
+.talent-choice[data-tone='guard'] {
+  --tone: #63d6a0;
+  --tone-soft: rgba(99, 214, 160, 0.15);
+  --tone-line: rgba(99, 214, 160, 0.4);
+}
+
+.talent-choice[data-tone='mobility'] {
+  --tone: #6fc3ff;
+  --tone-soft: rgba(111, 195, 255, 0.15);
+  --tone-line: rgba(111, 195, 255, 0.4);
+}
+
+.talent-choice[data-tone='fortune'] {
+  --tone: #ffd166;
+  --tone-soft: rgba(255, 209, 102, 0.16);
+  --tone-line: rgba(255, 209, 102, 0.42);
+}
+
+.talent-choice[data-tone='utility'] {
+  --tone: #b79bff;
+  --tone-soft: rgba(183, 155, 255, 0.16);
+  --tone-line: rgba(183, 155, 255, 0.42);
 }
 
 .talent-choice {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 18px 14px 16px;
-  border: 2px solid rgba(27, 67, 50, 0.12);
-  border-radius: 16px;
-  background: #ffffff;
-  color: #1b4332;
+  gap: 7px;
+  min-height: 248px;
+  padding: 16px 15px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 18px;
+  background:
+    radial-gradient(120% 80% at 100% 0%, var(--tone-soft), transparent 58%),
+    linear-gradient(165deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.015));
+  color: #eaf4ec;
   font-family: inherit;
   text-align: left;
   cursor: pointer;
-  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  overflow: hidden;
+  -webkit-appearance: none;
+  appearance: none;
+  animation: talentCardIn 0.38s cubic-bezier(0.2, 1, 0.3, 1) backwards;
+  animation-delay: calc(var(--i) * 70ms + 70ms);
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.talent-choice::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 14%;
+  right: 14%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--tone), transparent);
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.talent-choice::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.07) 47%,
+    transparent 62%
+  );
+  transform: translateX(-130%);
+  transition: transform 0.45s ease;
+  pointer-events: none;
 }
 
 .talent-choice:hover,
 .talent-choice:focus-visible {
-  transform: translateY(-3px);
-  border-color: #ffc83d;
-  box-shadow: 0 12px 26px rgba(255, 154, 60, 0.28);
+  transform: translateY(-5px);
+  border-color: var(--tone-line);
+  box-shadow:
+    0 18px 34px rgba(0, 0, 0, 0.35),
+    0 0 0 1px var(--tone-line),
+    0 0 28px var(--tone-soft);
   outline: none;
 }
 
-.talent-key {
+.talent-choice:hover::after,
+.talent-choice:focus-visible::after {
+  transform: translateX(130%);
+}
+
+.talent-choice.is-picked {
+  transform: translateY(-2px) scale(0.985);
+  border-color: rgba(255, 211, 120, 0.9);
+  box-shadow:
+    0 0 0 2px rgba(255, 211, 120, 0.45),
+    0 0 34px rgba(255, 190, 70, 0.28);
+}
+
+.talent-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.talent-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--tone-line);
+  border-radius: 12px;
+  background: var(--tone-soft);
+  box-shadow: inset 0 0 18px var(--tone-soft);
+  color: var(--tone);
+}
+
+.talent-icon svg {
+  display: block;
+  width: 22px;
+  height: 22px;
+}
+
+.talent-watermark {
   position: absolute;
-  top: 8px;
-  right: 10px;
-  width: 18px;
-  height: 18px;
-  border-radius: 6px;
-  background: rgba(27, 67, 50, 0.08);
-  font-size: 10px;
+  right: -12px;
+  bottom: 18px;
+  width: 116px;
+  height: 116px;
+  color: var(--tone);
+  opacity: 0.075;
+  transform: rotate(-9deg);
+  pointer-events: none;
+}
+
+.talent-watermark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.talent-key {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
   font-weight: 800;
-  line-height: 18px;
-  text-align: center;
+}
+
+.talent-tone {
+  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--tone);
 }
 
 .talent-name {
-  font-size: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 18px;
+  line-height: 1.15;
   font-weight: 800;
+  color: #f7f3e7;
 }
 
-.talent-effect {
-  font-size: 12px;
-  font-weight: 700;
-  color: #b8873a;
+.talent-card .talent-new {
+  margin-left: 0;
+  padding: 2px 7px;
+  border: 1px solid var(--tone-line);
+  background: var(--tone-soft);
+  color: var(--tone);
+  font-size: 9px;
+  letter-spacing: 0.04em;
 }
 
-.talent-blurb {
-  font-size: 11px;
+.talent-card .talent-effect {
+  font-size: 14px;
+  line-height: 1.3;
+  font-weight: 800;
+  color: var(--tone);
+}
+
+.talent-card .talent-blurb {
+  font-size: 11.5px;
   line-height: 1.5;
-  opacity: 0.6;
+  color: rgba(224, 238, 228, 0.65);
+}
+
+.talent-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.talent-card .talent-rank-note {
+  margin: 0;
+  font-size: 9.5px;
+  line-height: 1.3;
+  color: rgba(220, 240, 220, 0.52);
+}
+
+.talent-pick {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--tone);
+  opacity: 0.5;
+  transition: opacity 0.16s ease;
+}
+
+.talent-pick b {
+  font-weight: 900;
+}
+
+.talent-choice:hover .talent-pick,
+.talent-choice:focus-visible .talent-pick,
+.talent-choice.is-picked .talent-pick {
+  opacity: 1;
+  transform: none;
 }
 
 .talent-skip {
-  margin-top: 16px;
-  padding: 8px 16px;
-  border: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 14px auto 0;
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
-  background: transparent;
-  color: rgba(27, 67, 50, 0.55);
+  background: rgba(255, 255, 255, 0.025);
+  color: rgba(225, 240, 225, 0.5);
   font-family: inherit;
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
 }
 
 .talent-skip:hover {
-  color: #1b4332;
+  border-color: rgba(255, 211, 120, 0.4);
+  background: rgba(255, 211, 120, 0.08);
+  color: #ffe7ad;
 }
 
 .talent-skip kbd,
 .pause-talent kbd {
   padding: 1px 5px;
   border-radius: 4px;
-  background: rgba(27, 67, 50, 0.1);
+  background: rgba(255, 255, 255, 0.08);
   font-family: inherit;
   font-size: 10px;
 }
 
-@media (max-width: 640px) {
+@keyframes talentFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes talentBoxIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes talentCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .talent-card {
+    padding: 14px;
+  }
+
+  .talent-box {
+    max-height: calc(100vh - 28px);
+    padding: 20px 16px 16px;
+    border-radius: 20px;
+  }
+
   .talent-choices {
     grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .talent-choice {
+    min-height: 0;
+  }
+
+  .talent-pick {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-height: 680px) {
+  .talent-choice {
+    min-height: 0;
+  }
+
+  .talent-card .talent-blurb {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .talent-card,
+  .talent-box,
+  .talent-choice {
+    animation: none;
+    transition: none;
   }
 }
 
