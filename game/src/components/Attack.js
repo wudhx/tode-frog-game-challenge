@@ -13,6 +13,13 @@ export const ATTACK_VISUAL_DURATION = 0.3;
 
 /** Geometry is authored at this length; the live radius scales it. */
 const BASE_LENGTH = ATTACK_RADIUS;
+/**
+ * Longest the tongue is drawn, even when the damage radius is far larger.
+ * Late-game range can reach 1600 units; drawing that full length put a huge
+ * slab across the frog and the screen. The shockwave ring still shows the
+ * real damage radius, so the lash is only the visual snap.
+ */
+const TONGUE_VISUAL_MAX = 240;
 /** Thickness where the tongue leaves the mouth. */
 const TONGUE_ROOT_RADIUS = 2.8;
 /** Thickness at the tip, before the rounded end. */
@@ -132,16 +139,21 @@ export class Attack {
     this.tongueParent.add(this.tongue);
 
     // A thin, expanding ground ring communicates the radial damage without
-    // becoming the old flat yellow disc.
-    const ringGeometry = new THREE.RingGeometry(0.88, 1, 64);
-    const ringMaterial = new THREE.MeshBasicMaterial({
+    // becoming the old flat yellow disc. A line loop stays hairline-thin at
+    // any radius; a scaled ring mesh became a wide band late in a run.
+    const ringPoints = [];
+    for (let i = 0; i < 96; i += 1) {
+      const angle = (i / 96) * Math.PI * 2;
+      ringPoints.push(new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0));
+    }
+    const ringGeometry = new THREE.BufferGeometry().setFromPoints(ringPoints);
+    const ringMaterial = new THREE.LineBasicMaterial({
       color: 0xff7a9a,
       transparent: true,
       opacity: 0,
-      side: THREE.DoubleSide,
       depthWrite: false,
     });
-    this.shockwave = new THREE.Mesh(ringGeometry, ringMaterial);
+    this.shockwave = new THREE.LineLoop(ringGeometry, ringMaterial);
     this.shockwave.position.z = 1.5;
     this.shockwave.visible = false;
     this.scene.add(this.shockwave);
@@ -177,11 +189,12 @@ export class Attack {
     // Start from the mouth at zero length, so the first frame cannot show a
     // full-size tongue popping out of the frog's feet.
     const mouth = this.player.mouth;
-    const k = this.radius / BASE_LENGTH;
+    const visual = Math.min(this.radius, TONGUE_VISUAL_MAX) / BASE_LENGTH;
+    const thickness = Math.min(1.35, 1 + (visual - 1) * 0.08);
     this.tongue.position.set(mouth ? mouth.x : 4, 0, mouth ? mouth.z : 8);
     this.tongue.rotation.z = 0;
-    this.tongue.scale.set(k * 0.04, k, k);
-    this.tongueTip.scale.set(1 / (k * 0.04), 1 / k, 1 / k);
+    this.tongue.scale.set(visual * 0.04, thickness, thickness);
+    this.tongueTip.scale.set(1 / (visual * 0.04), 1 / thickness, 1 / thickness);
 
     this.tongue.visible = true;
     this.shockwave.visible = true;
@@ -229,7 +242,8 @@ export class Attack {
       this.visualTimer = Math.max(0, this.visualTimer - delta);
 
       const t = 1 - this.visualTimer / ATTACK_VISUAL_DURATION;
-      const k = this.radius / BASE_LENGTH;
+      const visual = Math.min(this.radius, TONGUE_VISUAL_MAX) / BASE_LENGTH;
+      const thickness = Math.min(1.35, 1 + (visual - 1) * 0.08);
 
       // Out fast, hold for a beat, snap back.
       let reach;
@@ -253,12 +267,12 @@ export class Attack {
         Math.max(1, this.radius)
       );
 
-      this.tongue.scale.set(k * reach, k, k);
-      this.tongueTip.scale.set(1 / (k * reach), 1 / k, 1 / k);
+      this.tongue.scale.set(visual * reach, thickness, thickness);
+      this.tongueTip.scale.set(1 / (visual * reach), 1 / thickness, 1 / thickness);
 
       this.shockwave.position.set(this.player.position.x, this.player.position.y, 1.5);
       this.shockwave.scale.setScalar(this.radius * (0.35 + 0.75 * t));
-      this.shockwave.material.opacity = 0.3 * Math.pow(1 - t, 1.3);
+      this.shockwave.material.opacity = 0.55 * Math.pow(1 - t, 1.2);
 
       if (this.visualTimer === 0) {
         this.tongue.visible = false;

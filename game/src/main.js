@@ -37,6 +37,10 @@ import {
   AWAKEN_SCORE_PER_CHARGE,
   AWAKEN_MAX_CHARGES,
   AWAKEN_DURATION,
+  AWAKEN_ATTACK_MULT,
+  AWAKEN_DAMAGE_TAKEN_MULT,
+  AWAKEN_RANGE_MULT,
+  AWAKEN_SPEED_BONUS,
 } from './components/Awakening.js';
 import { scaledParameters } from './components/Difficulty.js';
 import { hud } from './components/Interactables.js';
@@ -109,6 +113,12 @@ const MAX_TOTAL_DAMAGE_REDUCTION = 0.8;
 const FIRST_BOSS_SCORE = 2000;
 /** Score gap between later bosses. */
 const BOSS_SCORE_STEP = 3000;
+/**
+ * Quiet seconds after a boss dies before the next one can appear.
+ * A late boss payout can cross the next score threshold immediately, which
+ * otherwise made the next giant arrive on the same frame as the corpse.
+ */
+const BOSS_RESPAWN_DELAY = 8;
 /** Run-long stat bonus ranges for downing a boss. */
 const BOSS_BONUS_HP_MIN = 10;
 const BOSS_BONUS_HP_MAX = 40;
@@ -135,6 +145,12 @@ const BOSS_AWAKEN_DAMAGE_MULT = 0.6;
  * 20% is a real tempo swing without skipping the fight.
  */
 const BOMB_BOSS_DAMAGE = 0.2;
+/** The full Awakening package, reused by the toast and the pause notes. */
+const AWAKEN_SUMMARY =
+  `x${AWAKEN_ATTACK_MULT} damage · ` +
+  `${Math.round((1 - AWAKEN_DAMAGE_TAKEN_MULT) * 100)}% less damage taken · ` +
+  `+${Math.round((AWAKEN_RANGE_MULT - 1) * 100)}% range · ` +
+  `+${Math.round(AWAKEN_SPEED_BONUS * 100)}% speed`;
 
 // --- Boss signature abilities ---------------------------------------------
 /** Poison applied by a centipede pool: ticks and their cadence live here. */
@@ -520,10 +536,10 @@ function triggerAwakening() {
   juice.onAwaken();
   sound.awaken();
   hud.showAction(
-    `Awakening: ${AWAKEN_DURATION}s of triple damage`,
+    `Awakening: ${AWAKEN_DURATION}s — ${AWAKEN_SUMMARY}`,
     'awaken',
     '#7c5cff',
-    1600
+    2600
   );
   renderAwakenBar();
 }
@@ -919,6 +935,13 @@ function renderPauseMenu() {
     '  <div class="pause-section">',
     '    <div class="pause-label">Controls</div>',
     `    <div class="pause-controls">${controls}</div>`,
+    '  </div>',
+    '  <div class="pause-section">',
+    '    <div class="pause-label">Field notes</div>',
+    '    <div class="pause-notes">',
+    `      <p><b>Awakening (E):</b> ${AWAKEN_DURATION}s of ${AWAKEN_SUMMARY}.</p>`,
+    '      <p><b>Bomb pickup:</b> clears ordinary insects and deals 20% of a boss&rsquo;s max HP.</p>',
+    '    </div>',
     '  </div>',
     '  <div class="pause-section">',
     '    <div class="pause-label">Credits</div>',
@@ -1451,6 +1474,7 @@ function resetGame() {
   boss = null;
   nextBossScore = FIRST_BOSS_SCORE;
   bossesSpawned = 0;
+  bossCooldown = 0;
   bossesKilled = 0;
   bossBonus.maxHp = 0;
   bossBonus.attack = 0;
@@ -1542,6 +1566,8 @@ function spawnEnemy(speed) {
 let boss = null;
 let nextBossScore = FIRST_BOSS_SCORE;
 let bossesSpawned = 0;
+/** Time left before the next boss may spawn after a kill. */
+let bossCooldown = 0;
 /** Bosses actually killed this run, for the Game Over summary. */
 let bossesKilled = 0;
 /** Live venom puddles left by a centipede boss. */
@@ -1664,6 +1690,7 @@ function awardKill(enemy) {
   // Bosses pay out a run-long stat bonus on top of the orb.
   if (enemy.boss) {
     bossesKilled += 1;
+    bossCooldown = BOSS_RESPAWN_DELAY;
     if (boss === enemy) boss = null;
     renderBossBar();
     grantBossBonus();
@@ -2648,7 +2675,8 @@ function gameLoop() {
   // =======================================================================
   // Bosses arrive on a score schedule. While one is alive the ordinary
   // spawner takes a break so the fight stays readable.
-  if (!boss && score.value >= nextBossScore) {
+  if (bossCooldown > 0) bossCooldown = Math.max(0, bossCooldown - delta);
+  if (!boss && bossCooldown <= 0 && score.value >= nextBossScore) {
     spawnBoss();
     nextBossScore += BOSS_SCORE_STEP;
   }
@@ -3325,6 +3353,7 @@ window.__hud = {
   get nextBossScore() { return nextBossScore; },
   get bossesSpawned() { return bossesSpawned; },
   get bossesKilled() { return bossesKilled; },
+  get bossCooldown() { return bossCooldown; },
   get runTime() { return runTime; },
   /** Pure boss-stat derivation, shared with the constructor. For tests. */
   bossProfile,

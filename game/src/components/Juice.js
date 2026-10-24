@@ -50,7 +50,7 @@ export class Juice {
     /** 0..1, squared before use so small hits stay subtle. */
     this.trauma = 0;
     /** World-unit amplitude at trauma = 1. */
-    this.shakeAmplitude = 26;
+    this.shakeAmplitude = 20;
 
     // --- Combo ------------------------------------------------------------
     this.combo = 0;
@@ -107,8 +107,11 @@ export class Juice {
 
     // Short and non-stacking: at 2+ kills a second a long freeze reads as lag.
     this.hitstop(isBoss ? 0.16 : 0.038, isBoss ? 0.02 : 0.05);
-    this.addTrauma(isBoss ? 0.8 : 0.18 + Math.min(0.25, this.combo * 0.015));
-    this.fovKick = Math.max(this.fovKick, isBoss ? 1.1 : 0.3);
+    // Ordinary kills arrive in bursts late in a run. Shake is reserved for
+    // boss impacts and taking damage; the popup, burst and hitstop already
+    // sell a normal kill without rattling the camera every few frames.
+    this.addTrauma(isBoss ? 0.8 : 0.03);
+    this.fovKick = Math.max(this.fovKick, isBoss ? 1.1 : 0.12);
   }
 
   /**
@@ -139,8 +142,9 @@ export class Juice {
     const x = position.x + Math.cos(angle) * reach;
     const y = position.y + Math.sin(angle) * reach;
     this.burst(x, y, 10, 0xff9fb2, { speed: 150, spread: 0.9, z: 24 });
-    this.addTrauma(0.07);
-    this.fovKick = Math.max(this.fovKick, 0.45);
+    // The lash itself should read, not rattle the camera every cooldown.
+    this.addTrauma(0.025);
+    this.fovKick = Math.max(this.fovKick, 0.12);
   }
 
   /**

@@ -635,7 +635,7 @@ canvas.game {
 }
 
 .pause-box {
-  width: 420px;
+  width: 500px;
   max-width: 90vw;
   max-height: 88vh;
   overflow-y: auto;
@@ -658,7 +658,7 @@ canvas.game {
 }
 
 .pause-section {
-  margin-top: 18px;
+  margin-top: 12px;
 }
 
 .pause-label {
@@ -746,6 +746,21 @@ canvas.game {
   color: #33563a;
 }
 
+.pause-notes {
+  margin-top: 6px;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: #33563a;
+}
+
+.pause-notes p {
+  margin: 0 0 4px;
+}
+
+.pause-notes b {
+  color: #1b4332;
+}
+
 .pause-credits {
   margin-top: 8px;
   font-size: 11px;
@@ -776,7 +791,7 @@ canvas.game {
 
 .pause-continue {
   width: 100%;
-  margin-top: 20px;
+  margin-top: 14px;
   padding: 11px 0;
   border: none;
   border-radius: 10px;
@@ -2148,6 +2163,7 @@ canvas.game {
   display: flex;
   align-items: center;
   gap: 10px;
+  max-width: min(760px, calc(100vw - 48px));
   padding: 10px 22px;
   border-radius: 14px;
   background: rgba(12, 24, 16, 0.92);

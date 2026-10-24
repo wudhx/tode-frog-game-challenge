@@ -123,6 +123,24 @@ export class Player {
     this.shadow.renderOrder = 0;
     scene.add(this.shadow);
 
+    // A thin locator ring around Tode's feet. It ignores depth on purpose:
+    // a giant boss can cover most of the frog, but the ring still draws on
+    // top, so the player can find their own position during a boss fight.
+    this.marker = new THREE.Mesh(
+      new THREE.RingGeometry(23, 28, 40),
+      new THREE.MeshBasicMaterial({
+        color: 0x8ef7b0,
+        transparent: true,
+        opacity: 0.5,
+        depthTest: false,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      })
+    );
+    this.marker.position.z = 1.2;
+    this.marker.renderOrder = 10;
+    this.group.add(this.marker);
+
     // Fit to the loaded model's footprint; the hop animation multiplies this.
     this.shadowBaseScale = 1;
 
@@ -409,6 +427,9 @@ export class Player {
     const lift = Math.min(1, this.group.position.z / JUMP_HEIGHT);
     this.shadow.scale.setScalar(this.shadowBaseScale * (1 - 0.35 * lift));
     this.shadow.material.opacity = 0.18 * (1 - 0.55 * lift);
+
+    // Keep the locator on the ground while the body arcs upward.
+    this.marker.position.z = 1.2 - this.group.position.z;
   }
 
   /**
@@ -439,5 +460,6 @@ export class Player {
     this.shadow.position.set(this.group.position.x, this.group.position.y, 0.8);
     this.shadow.scale.setScalar(this.shadowBaseScale);
     this.shadow.material.opacity = 0.18;
+    this.marker.position.z = 1.2;
   }
 }
