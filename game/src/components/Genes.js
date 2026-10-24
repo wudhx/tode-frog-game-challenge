@@ -93,6 +93,14 @@ export const GENE_TYPES = {
 // ---------------------------------------------------------------------------
 /** How close the hero must be to pick up an orb. */
 export const GENE_PICKUP_RADIUS = 48;
+/**
+ * Orbs inside this radius drift toward the hero before being collected.
+ * Gene orbs are choice drops rather than timed power-ups, so this is a pull,
+ * not an automatic grab: the card still opens at the normal collect radius.
+ */
+export const GENE_MAGNET_RADIUS = 240;
+/** Pull speed at full strength, in world units per second. */
+export const GENE_MAGNET_SPEED = 600;
 /** Consecutive kills without a drop before one is forced. */
 export const GENE_PITY = 10;
 /** Drop chance once every slot is legendary (stack-only orbs). */
@@ -315,6 +323,24 @@ export class GeneSystem {
       orb.mesh.position.z = 26 + Math.sin(orb.phase) * 5;
       orb.mesh.rotation.y += delta * 2;
       orb.mesh.rotation.x += delta * 1.3;
+
+      // Pull the orb toward the hero, easing to zero at the outer edge. The
+      // mesh position is updated here too: the orb record keeps x/y as the
+      // source of truth for collection, while the mesh is what the player sees.
+      const dx = orb.x - playerPosition.x;
+      const dy = orb.y - playerPosition.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance > GENE_PICKUP_RADIUS && distance < GENE_MAGNET_RADIUS) {
+        const strength = 1 - distance / GENE_MAGNET_RADIUS;
+        const pull = strength * GENE_MAGNET_SPEED * delta;
+        orb.x -= (dx / distance) * pull;
+        orb.y -= (dy / distance) * pull;
+        orb.mesh.position.x = orb.x;
+        orb.mesh.position.y = orb.y;
+        orb.mesh.scale.setScalar(1 + strength * 0.25);
+      } else {
+        orb.mesh.scale.setScalar(1);
+      }
     }
 
     if (this.pending) return this.pending;
@@ -466,6 +492,7 @@ export class GeneSystem {
       key: orb.key,
       label: cfg.label,
       tier: orb.tier,
+      stat: cfg.stat,
       description: cfg.description,
       perLayerText: formatPerLayer(cfg, orb.tier),
       capText: formatCap(cfg, orb.tier),

@@ -35,8 +35,9 @@ experience bar and no upgrade screen.
 rank is not fixed when you pick it: it is derived from your current level (1, 2, 3, 5, 7), so
 the one you choose at minute two keeps improving at minute twelve.
 
-**Genes drop from what you kill.** Taking one commits it to the game and stacks it. There are
-six species, each in three qualities; three of the same quality merge into the next tier.
+**Genes drop from what you kill.** Orbs drift toward you when you get close; taking one commits
+it to the game and stacks it. There are six species, each in three qualities; three of the same
+quality merge into the next tier.
 
 **Score also charges the awakening bar.** Every 1,500 points adds one charge, up to three.
 `E` spends one for ten seconds of triple damage, 65% less damage taken, longer reach and
@@ -77,7 +78,7 @@ talents, boss kills, awakening.
 | **Tongue blast** | Short-range area attack. Hold `Space` to keep attacking; movement never interrupts it. |
 | **Awakening** | Score fills a bank of up to 3 charges (1,500 points each). `E` spends one for 10 seconds of 3× damage, 65% less damage taken, +60% reach and +30% hop speed. |
 | **Talents** | 16 talents, 4 slots, one offer every 60 seconds. Rank is driven by hero level (thresholds 1 / 2 / 3 / 5 / 7), so a talent keeps improving after you take it. |
-| **Genes** | 6 species × 3 qualities. Orbs drop from kills; taking one locks it in for the game and stacks it. Three of the same quality merge into the next tier. |
+| **Genes** | 6 species × 3 qualities. Orbs drop from kills and drift toward a nearby hero; taking one locks it in for the game and stacks it. Three of the same quality merge into the next tier. |
 | **Bosses** | The first at 2,000 points, then every 3,000 after that. Each has a signature move: horn charge, venom pools, burrow ambush. |
 | **Dynamic difficulty** | Spawn rate, insect speed, your cooldown and your reach all scale with score. Insects scale slightly faster than you do. |
 

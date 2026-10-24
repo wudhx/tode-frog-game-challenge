@@ -19,7 +19,7 @@ import { HighScores } from './components/HighScores.js';
 import { Health, HIT_DAMAGE, HEART_PICKUP, HIT_INVULNERABILITY } from './components/Health.js';
 import { sound } from './components/Sound.js';
 import { PowerUpManager } from './components/PowerUp.js';
-import { GeneSystem, GENE_TYPES, TIER_LABELS, TIER_COLORS, formatPerLayer, formatCap, LEGENDARY_ORB_SCORE } from './components/Genes.js';
+import { GeneSystem, GENE_TYPES, GENE_TIERS, TIER_LABELS, TIER_COLORS, formatPerLayer, formatCap, LEGENDARY_ORB_SCORE } from './components/Genes.js';
 import {
   TalentSystem,
   TALENT_INTERVAL,
@@ -369,8 +369,63 @@ renderGeneBar();
 
 const geneCard = document.createElement('div');
 geneCard.className = 'gene-card';
+geneCard.setAttribute('role', 'dialog');
+geneCard.setAttribute('aria-modal', 'true');
+geneCard.setAttribute('aria-label', 'Gene drop');
 geneCard.style.display = 'none';
 document.body.appendChild(geneCard);
+
+/**
+ * Icon and accent colour for each gene stat. Inline SVG keeps the card free of
+ * external art and icon fonts.
+ */
+const GENE_STAT_STYLES = {
+  attackCooldown: {
+    color: '#6fc3ff',
+    icon:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+      '<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg>',
+  },
+  lifesteal: {
+    color: '#ff6b9d',
+    icon:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M12 3s6 6.2 6 10a6 6 0 0 1-12 0c0-3.8 6-10 6-10Z"/></svg>',
+  },
+  attackRange: {
+    color: '#ffd166',
+    icon:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+      '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2"/></svg>',
+  },
+  maxHp: {
+    color: '#63d6a0',
+    icon:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M12 20s-7-4.4-7-9a4 4 0 0 1 7-2 4 4 0 0 1 7 2c0 4.6-7 9-7 9Z"/></svg>',
+  },
+  attackPower: {
+    color: '#ff8a66',
+    icon:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M13 2 4.5 13.5H11l-1 8.5L19.5 10H13V2Z"/></svg>',
+  },
+  damageReduction: {
+    color: '#b79bff',
+    icon:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M12 3 5 6v5.4c0 4.6 2.9 8 7 9.6 4.1-1.6 7-5 7-9.6V6l-7-3Z"/>' +
+      '<path d="m9 12 2 2 4-4"/></svg>',
+  },
+};
+
+/**
+ * @param {string} stat Gene stat key.
+ * @returns {{color: string, icon: string}}
+ */
+function geneStatStyle(stat) {
+  return GENE_STAT_STYLES[stat] || GENE_STAT_STYLES.attackPower;
+}
 
 // ---------------------------------------------------------------------------
 // Talent HUD
@@ -510,24 +565,63 @@ function showGeneCard() {
       : `Merge ${info.merge}/3`;
   }
 
+  const statStyle = geneStatStyle(info.stat);
+  const nextTierIndex = GENE_TIERS.indexOf(info.tier) + 1;
+  const nextTier = nextTierIndex < GENE_TIERS.length ? GENE_TIERS[nextTierIndex] : null;
+
+  let mergeLabel;
+  let mergeProgress = info.merge || 0;
+  if (info.kind === 'full') {
+    mergeLabel = 'No free gene slot';
+    mergeProgress = 0;
+  } else if (info.kind === 'upgrade') {
+    mergeLabel = 'Quality upgraded · merge reset';
+    mergeProgress = 0;
+  } else if (!nextTier) {
+    mergeLabel = 'Max quality';
+    mergeProgress = 3;
+  } else {
+    mergeLabel = `${info.merge}/3 to ${TIER_LABELS[nextTier]}`;
+  }
+  const pips = Array.from(
+    { length: 3 },
+    (_, index) => `<span${index < mergeProgress ? ' class="filled"' : ''}></span>`
+  ).join('');
+
   geneCard.innerHTML = [
-    '<div class="gene-card-box">',
-    `  <div class="gene-card-tier" style="color:${tierColor}">${TIER_LABELS[info.tier]}</div>`,
-    `  <div class="gene-card-title">${info.label} Gene</div>`,
-    `  <div class="gene-card-per">${info.perLayerText}</div>`,
+    '<div class="gene-card-box" tabindex="-1" ' +
+      `style="--gene-tone:${statStyle.color};--tier:${tierColor}">`,
+    '  <div class="gene-card-head">',
+    `    <span class="gene-card-icon" aria-hidden="true">${statStyle.icon}</span>`,
+    `    <span class="gene-card-tier">${TIER_LABELS[info.tier]}</span>`,
+    '  </div>',
+    '  <div class="gene-card-kicker">Gene drop</div>',
+    `  <div class="gene-card-title">${info.label} <span>Gene</span></div>`,
+    `  <div class="gene-card-stat">${info.description}</div>`,
+    `  <div class="gene-card-gain">${info.perLayerText}</div>`,
     `  <div class="gene-card-cap">${info.capText}</div>`,
-    `  <div class="gene-card-action">${actionText}</div>`,
-    `  <div class="gene-card-stacks">${mergeText}</div>`,
+    '  <div class="gene-card-action-wrap">',
+    `    <div class="gene-card-action">${actionText}</div>`,
+    `    <div class="gene-card-stacks">${mergeText}</div>`,
+    '  </div>',
+    '  <div class="gene-card-merge">',
+    `    <div class="gene-card-merge-label">${mergeLabel}</div>`,
+    `    <div class="gene-card-pips" aria-hidden="true">${pips}</div>`,
+    '  </div>',
     `  <div class="gene-card-rule">${info.stackRule}</div>`,
     '  <div class="gene-card-buttons">',
-    `    <button class="gene-take"${info.kind === 'full' ? ' disabled' : ''}>Take <kbd>F</kbd></button>`,
-    '    <button class="gene-skip">Skip <kbd>G</kbd></button>',
+    `    <button class="gene-take" type="button"${info.kind === 'full' ? ' disabled' : ''}>Take <kbd>F</kbd></button>`,
+    '    <button class="gene-skip" type="button">Skip <kbd>G</kbd></button>',
     '  </div>',
     '</div>',
   ].join('');
 
   geneCard.querySelector('.gene-take').onclick = () => resolveGene(true);
   geneCard.querySelector('.gene-skip').onclick = () => resolveGene(false);
+
+  // Focus the card, not Take: a reflex Space must not consume the gene.
+  const box = geneCard.querySelector('.gene-card-box');
+  if (box) box.focus();
 }
 
 /**
@@ -3126,6 +3220,7 @@ window.__hud = {
   get score() { return score; },
   get health() { return health; },
   get playerStats() { return playerStats; },
+  get player() { return player; },
   get attack() { return attack; },
   get genes() { return genes; },
   get talents() { return talents; },
