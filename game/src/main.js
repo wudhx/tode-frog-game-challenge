@@ -114,9 +114,9 @@ const FIRST_BOSS_SCORE = 2000;
 /** Score gap between later bosses. */
 const BOSS_SCORE_STEP = 3000;
 /**
- * Quiet seconds after a boss dies before the next one can appear.
- * A late boss payout can cross the next score threshold immediately, which
- * otherwise made the next giant arrive on the same frame as the corpse.
+ * Extra quiet seconds after a boss dies. The score gate below is the real
+ * spacing rule; this timer is a short breather so the next giant never walks
+ * in on the corpse even when the player is already deep into the next band.
  */
 const BOSS_RESPAWN_DELAY = 8;
 /** Run-long stat bonus ranges for downing a boss. */
@@ -906,7 +906,7 @@ document.body.appendChild(pauseMenu);
 function renderPauseMenu() {
   const controls = [
     ['Arrow keys', 'Hop around the board'],
-    ['Space', 'Tongue blast — hold to keep attacking'],
+    ['Space', 'Tongue blast (360°) — hold to keep attacking'],
     ['E', 'Awakening — spend a charge'],
     ['1 / 2 / 3', 'Pick a talent card'],
     ['Esc', 'Decline the talent offer'],
@@ -1691,6 +1691,10 @@ function awardKill(enemy) {
   if (enemy.boss) {
     bossesKilled += 1;
     bossCooldown = BOSS_RESPAWN_DELAY;
+    // The next giant must be earned with a fresh score gap. A boss payout can
+    // be large enough to jump past the old threshold in one hit; clamping the
+    // threshold to (current score + step) prevents a seamless boss chain.
+    nextBossScore = Math.max(nextBossScore, score.value + BOSS_SCORE_STEP);
     if (boss === enemy) boss = null;
     renderBossBar();
     grantBossBonus();
@@ -2573,13 +2577,15 @@ function gameLoop() {
       health.addMaxHp(HEART_PICKUP);
       sound.heal();
     } else if (type.key === 'bomb') {
-      // The Bomb clears ordinary insects outright. A boss survives the blast
-      // with its encounter intact, minus a fixed share of max HP; routing a
-      // boss death through awardKill keeps the bar, score and bonuses in sync.
+      // Every ordinary insect cleared by the Bomb is a real kill: score,
+      // Awakening charge, max-HP growth and a possible gene drop all go
+      // through awardKill. A boss survives the blast with its encounter
+      // intact, minus a fixed share of max HP; routing a boss death through
+      // awardKill keeps the bar, score and bonuses in sync.
       const survivors = [];
       for (const enemy of enemies) {
         if (!enemy.boss) {
-          enemy.dispose();
+          awardKill(enemy);
           continue;
         }
         const killed = enemy.takeTrueDamage(enemy.maxHp * BOMB_BOSS_DAMAGE);

@@ -103,19 +103,25 @@ export const BOSS_MIN_HITS = 50;
  * difficulty curve never flattens out even once the hero's attack power has
  * outgrown the flat multiplier.
  */
-export const BOSS_MIN_HITS_GROWTH = 15;
+export const BOSS_MIN_HITS_GROWTH = 18;
+/**
+ * Extra hit requirement per boss squared. A flat +18 turns every giant into
+ * the same-length fight once the hero's damage catches up; this term makes
+ * boss #4 and #5 feel materially tougher instead of merely longer.
+ */
+export const BOSS_MIN_HITS_ACCEL = 4;
 /** Hard ceiling on the hit requirement, so a long run cannot stall forever. */
-export const BOSS_MIN_HITS_MAX = 160;
+export const BOSS_MIN_HITS_MAX = 220;
 /** Extra health multiplier added for each boss already spawned this run. */
-export const BOSS_HP_GROWTH_PER_BOSS = 0.6;
+export const BOSS_HP_GROWTH_PER_BOSS = 0.8;
 /** Extra armour added per boss already spawned, on top of the flat bonus. */
-export const BOSS_ARMOR_GROWTH_PER_BOSS = 0.03;
+export const BOSS_ARMOR_GROWTH_PER_BOSS = 0.04;
 /** Armour can never make a boss untouchable. */
 export const BOSS_ARMOR_MAX = 0.8;
 /** Contact-damage growth per boss already spawned. */
-export const BOSS_DAMAGE_GROWTH_PER_BOSS = 0.18;
+export const BOSS_DAMAGE_GROWTH_PER_BOSS = 0.22;
 /** Enrage threshold climbs, so late bosses spend longer in that phase. */
-export const BOSS_ENRAGE_GROWTH_PER_BOSS = 0.05;
+export const BOSS_ENRAGE_GROWTH_PER_BOSS = 0.06;
 /** Enrage threshold ceiling. */
 export const BOSS_ENRAGE_MAX = 0.7;
 
@@ -230,10 +236,13 @@ export function bossProfile(type, bossIndex = 0, heroAttack = 1) {
   const contactDamage =
     (type.contactDamage || 20) * BOSS_DAMAGE_MULT * (1 + bossIndex * BOSS_DAMAGE_GROWTH_PER_BOSS);
 
-  // Boss #1 asks for the baseline; every later boss demands more hits.
+  // Boss #1 asks for the baseline; every later boss demands more hits, and
+  // the quadratic term makes the jump from #3 to #4 larger than #1 to #2.
   const hitFloor = Math.min(
     BOSS_MIN_HITS_MAX,
-    BOSS_MIN_HITS + bossIndex * BOSS_MIN_HITS_GROWTH
+    BOSS_MIN_HITS +
+      bossIndex * BOSS_MIN_HITS_GROWTH +
+      bossIndex * bossIndex * BOSS_MIN_HITS_ACCEL
   );
   // Armour already shaves every hit, so the floor is expressed in hits that
   // land rather than raw swings.
