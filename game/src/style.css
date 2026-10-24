@@ -1805,6 +1805,7 @@ canvas.game {
   background: radial-gradient(circle at 50% 30%, #14251a 0%, #0a140c 55%, #060c08 100%);
   color: #ffffff;
   text-align: center;
+  overflow-y: auto;
   /* Sit above the transient hurt flash and vignette. */
   z-index: 40;
   user-select: none;
@@ -1845,6 +1846,111 @@ canvas.game {
   font-size: 30px;
   color: #ffe066;
   font-variant-numeric: tabular-nums;
+}
+
+.go-run {
+  width: min(560px, 92vw);
+  padding: 14px 16px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.go-run-title {
+  margin-bottom: 9px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(233, 243, 234, 0.55);
+}
+
+.go-run-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.go-run-stat {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.go-run-stat span {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: rgba(233, 243, 234, 0.45);
+}
+
+.go-run-stat b {
+  display: block;
+  color: #ffe066;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.go-run-row {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 8px;
+  align-items: start;
+  margin-top: 9px;
+}
+
+.go-run-label {
+  padding-top: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: rgba(233, 243, 234, 0.45);
+}
+
+.go-run-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-height: 20px;
+}
+
+.go-run-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 3px 8px;
+  white-space: nowrap;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #e9f3ea;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.go-run-chip b {
+  color: #ffd76a;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.go-run-stack {
+  color: rgba(233, 243, 234, 0.5);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.go-run-empty {
+  padding-top: 3px;
+  color: rgba(233, 243, 234, 0.42);
+  font-size: 12px;
 }
 
 .go-board {

@@ -1285,6 +1285,46 @@ let gameState = 'playing';
 
 let gameOverOverlay = null;
 
+/** Formats a run length as m:ss. */
+function formatRunTime(seconds) {
+  const total = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/** Fills the Game Over "This run" panel from the state still held at death. */
+function renderRunSummary() {
+  const talentList = gameOverOverlay.querySelector('.go-run-talents');
+  talentList.innerHTML = talents.owned.length
+    ? talents.owned
+        .map(
+          (talent) =>
+            `<span class="go-run-chip">${talent.name}` +
+            `<b>Rank ${talents.levelOf(talent)}</b></span>`
+        )
+        .join('')
+    : '<span class="go-run-empty">None taken</span>';
+
+  const geneList = gameOverOverlay.querySelector('.go-run-genes');
+  const lockedGenes = genes.slots.filter(Boolean);
+  geneList.innerHTML = lockedGenes.length
+    ? lockedGenes
+        .map((slot) => {
+          const gene = GENE_TYPES[slot.key];
+          const tierColor = `#${TIER_COLORS[slot.tier].toString(16).padStart(6, '0')}`;
+          return (
+            `<span class="go-run-chip">${gene.label}` +
+            `<b style="color:${tierColor}">${TIER_LABELS[slot.tier]}</b>` +
+            `<span class="go-run-stack">x${formatStacks(slot.stacks)}</span></span>`
+          );
+        })
+        .join('')
+    : '<span class="go-run-empty">None locked</span>';
+
+  gameOverOverlay.querySelector('.go-run-time').textContent = formatRunTime(runTime);
+  gameOverOverlay.querySelector('.go-run-level').textContent = String(health.level);
+  gameOverOverlay.querySelector('.go-run-bosses').textContent = String(bossesKilled);
+}
+
 function buildGameOverOverlay() {
   const overlay = document.createElement('div');
   overlay.className = 'game-over';
@@ -1292,6 +1332,22 @@ function buildGameOverOverlay() {
     '<div class="go-title">Game Over</div>',
     '<div class="go-badge">New Best!</div>',
     '<div class="go-score">Score <b>0</b></div>',
+    '<div class="go-run">',
+    '  <div class="go-run-title">This run</div>',
+    '  <div class="go-run-stats">',
+    '    <div class="go-run-stat"><span>Time</span><b class="go-run-time">0:00</b></div>',
+    '    <div class="go-run-stat"><span>Level</span><b class="go-run-level">1</b></div>',
+    '    <div class="go-run-stat"><span>Boss kills</span><b class="go-run-bosses">0</b></div>',
+    '  </div>',
+    '  <div class="go-run-row">',
+    '    <span class="go-run-label">Talents</span>',
+    '    <span class="go-run-list go-run-talents"></span>',
+    '  </div>',
+    '  <div class="go-run-row">',
+    '    <span class="go-run-label">Genes</span>',
+    '    <span class="go-run-list go-run-genes"></span>',
+    '  </div>',
+    '</div>',
     '<div class="go-board">',
     '  <div class="go-board-title">Best runs</div>',
     '  <ol></ol>',
@@ -1326,6 +1382,7 @@ function showGameOver() {
     )
     .join('');
 
+  renderRunSummary();
   gameOverOverlay.style.display = 'flex';
 
   player.group.visible = false;
@@ -1394,6 +1451,7 @@ function resetGame() {
   boss = null;
   nextBossScore = FIRST_BOSS_SCORE;
   bossesSpawned = 0;
+  bossesKilled = 0;
   bossBonus.maxHp = 0;
   bossBonus.attack = 0;
   bossBonus.defense = 0;
@@ -1484,6 +1542,8 @@ function spawnEnemy(speed) {
 let boss = null;
 let nextBossScore = FIRST_BOSS_SCORE;
 let bossesSpawned = 0;
+/** Bosses actually killed this run, for the Game Over summary. */
+let bossesKilled = 0;
 /** Live venom puddles left by a centipede boss. */
 const venomPools = [];
 /** Lingering poison on the hero after standing in venom. */
@@ -1603,6 +1663,7 @@ function awardKill(enemy) {
 
   // Bosses pay out a run-long stat bonus on top of the orb.
   if (enemy.boss) {
+    bossesKilled += 1;
     if (boss === enemy) boss = null;
     renderBossBar();
     grantBossBonus();
@@ -3263,6 +3324,8 @@ window.__hud = {
   get bossBonus() { return bossBonus; },
   get nextBossScore() { return nextBossScore; },
   get bossesSpawned() { return bossesSpawned; },
+  get bossesKilled() { return bossesKilled; },
+  get runTime() { return runTime; },
   /** Pure boss-stat derivation, shared with the constructor. For tests. */
   bossProfile,
 
