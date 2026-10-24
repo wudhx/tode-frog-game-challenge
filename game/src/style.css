@@ -1804,7 +1804,8 @@ canvas.game {
   background: rgba(10, 20, 12, 0.78);
   color: #ffffff;
   text-align: center;
-  z-index: 20;
+  /* Sit above the transient hurt flash and vignette. */
+  z-index: 40;
   user-select: none;
 }
 

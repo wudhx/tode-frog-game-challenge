@@ -238,6 +238,15 @@ export class Juice {
       pop.life = 0;
       pop.el.style.display = 'none';
     }
+
+    // The game loop stops updating effects on the game-over screen. If the
+    // killing blow left a red hurt flash at full opacity, it would sit above
+    // the results overlay forever; clear both screen tints here.
+    this._flash.strength = 0;
+    this._flash.decay = 0;
+    this.flashEl.style.opacity = '0';
+    this._vignetteStrength = 0;
+    if (this.vignette) this.vignette.style.opacity = '0';
   }
 
   /**

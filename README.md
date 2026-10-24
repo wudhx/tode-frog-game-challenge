@@ -62,12 +62,12 @@ then start again.
 offense, defense, mobility, fortune — and each shows the rank you would get right now plus
 the hero level that unlocks the next one.
 
-<a href="https://cdn.jsdelivr.net/gh/wudhx/tode-talent-awakening@main/docs/screenshots/talent-offer.png"><img src="https://cdn.jsdelivr.net/gh/wudhx/tode-talent-awakening@main/docs/screenshots/talent-offer.png" width="700" alt="Talent draft — three cards, pick one"></a>
+<a href="https://cdn.jsdelivr.net/gh/wudhx/tode-talent-awakening@main/docs/screenshots/talent-draft.png"><img src="https://cdn.jsdelivr.net/gh/wudhx/tode-talent-awakening@main/docs/screenshots/talent-draft.png" width="700" alt="Talent draft — three cards, pick one"></a>
 
 **The stat sheet.** Every number is shown with the sources that produced it — base, levels,
 genes, talents, boss kills, Awakening.
 
-<a href="https://cdn.jsdelivr.net/gh/wudhx/tode-talent-awakening@main/docs/screenshots/character-panel.png"><img src="https://cdn.jsdelivr.net/gh/wudhx/tode-talent-awakening@main/docs/screenshots/character-panel.png" width="300" alt="Character panel — every stat with its sources"></a>
+<a href="https://cdn.jsdelivr.net/gh/wudhx/tode-talent-awakening@main/docs/screenshots/character-sheet.png"><img src="https://cdn.jsdelivr.net/gh/wudhx/tode-talent-awakening@main/docs/screenshots/character-sheet.png" width="300" alt="Character panel — every stat with its sources"></a>
 
 ---
 
