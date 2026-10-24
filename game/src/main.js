@@ -2714,6 +2714,7 @@ function updateBossAbility(delta) {
         radius: ability.dangerRadius,
       };
       boss.visual.visible = false;
+      if (boss.shadow) boss.shadow.visible = false;
       startedBurrowMarker();
       hud.showAction('The ground shakes — get clear!', 'boss', ability.color, 1400);
     }
@@ -2815,6 +2816,7 @@ function updateBossAbility(delta) {
 
     // Surface. Anyone still inside the marker takes the burst.
     boss.visual.visible = true;
+    if (boss.shadow) boss.shadow.visible = true;
     boss.group.position.set(boss.danger.x, boss.danger.y, 0);
     const inside =
       !safeFromHazards() &&

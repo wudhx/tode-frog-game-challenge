@@ -35,6 +35,12 @@ export class Juice {
     this.hitstopTimer = 0;
     this.hitstopScale = 1;
 
+    // --- Slow motion ------------------------------------------------------
+    // Separate from hit-stop: a hit-stop freezes almost completely for a few
+    // frames, while a slow-motion moment is a longer, readable dip in speed.
+    this.slowTimer = 0;
+    this.slowScale = 1;
+
     // --- FOV punch --------------------------------------------------------
     /** Rest field of view; a kick subtracts from this and decays back. */
     this.baseFov = camera.fov;
@@ -61,6 +67,7 @@ export class Juice {
     this._buildParticles();
     this._buildSplats();
     this._buildChunks();
+    this._buildAwakenRing();
     this._buildDom();
   }
 
@@ -169,6 +176,29 @@ export class Juice {
     this.burst(p.x, p.y, 70, 0xffd76a, { speed: 360, spread: 2.2, z: 30 });
     this.flash('rgba(255, 210, 90, 0.35)', 0.9, 0.7);
     this.addTrauma(0.5);
+    this.fovKick = Math.max(this.fovKick, 1.2);
+
+    // A visible shockwave gives the panic button a physical answer on the
+    // board, not just a screen flash. The brief slow-motion lets the player
+    // register that the world just changed before the boost starts.
+    this.awakenRing.position.set(p.x, p.y, 2.4);
+    this.awakenRing.scale.setScalar(18);
+    this.awakenRing.material.opacity = 0.85;
+    this.awakenRing.visible = true;
+    this.awakenLife = this.awakenMaxLife;
+    this.slowMotion(0.2, 0.35);
+  }
+
+  /**
+   * Slows the simulation for a short, readable beat.
+   *
+   * @param {number} seconds Real seconds.
+   * @param {number} [scale] Multiplier applied to gameplay time (0–1).
+   */
+  slowMotion(seconds, scale = 0.35) {
+    if (!(seconds > 0)) return;
+    this.slowTimer = Math.max(this.slowTimer, seconds);
+    this.slowScale = Math.min(this.slowScale > 0 ? this.slowScale : 1, scale);
   }
 
   /** A boss entered the board. */
@@ -184,8 +214,12 @@ export class Juice {
     this.bestCombo = 0;
     this.trauma = 0;
     this.hitstopTimer = 0;
+    this.slowTimer = 0;
+    this.slowScale = 1;
     this.timeScale = 1;
     this.fovKick = 0;
+    this.awakenLife = 0;
+    if (this.awakenRing) this.awakenRing.visible = false;
     // A run that ended mid-shake must not leave the camera parked off-centre.
     this.camera.position.copy(this.cameraBase);
     this.camera.fov = this.baseFov;
@@ -214,13 +248,18 @@ export class Juice {
   update(delta) {
     this._clock += delta;
 
-    // --- Hit-stop ---------------------------------------------------------
+    // --- Hit-stop and slow motion ----------------------------------------
+    let scale = 1;
     if (this.hitstopTimer > 0) {
       this.hitstopTimer = Math.max(0, this.hitstopTimer - delta);
-      this.timeScale = this.hitstopScale;
-    } else {
-      this.timeScale = 1;
+      scale = this.hitstopScale;
     }
+    if (this.slowTimer > 0) {
+      this.slowTimer = Math.max(0, this.slowTimer - delta);
+      if (this.slowTimer > 0) scale = Math.min(scale, this.slowScale);
+      else this.slowScale = 1;
+    }
+    this.timeScale = scale;
 
     // --- Combo decay ------------------------------------------------------
     if (this.comboTimer > 0) {
@@ -233,6 +272,7 @@ export class Juice {
     this._updateParticles(delta);
     this._updateSplats(delta);
     this._updateChunks(delta);
+    this._updateAwakenRing(delta);
     this._updatePopups(delta);
     this._updateFlash(delta);
   }
@@ -572,6 +612,39 @@ export class Juice {
       c.mesh.rotation.y += delta * 7;
       c.mesh.material.opacity = Math.min(1, c.life / 0.25);
     }
+  }
+
+  _buildAwakenRing() {
+    const geometry = new THREE.RingGeometry(0.92, 1, 64);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xffd76a,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    this.awakenRing = new THREE.Mesh(geometry, material);
+    this.awakenRing.position.z = 2.4;
+    this.awakenRing.renderOrder = 4;
+    this.awakenRing.visible = false;
+    this.scene.add(this.awakenRing);
+
+    this.awakenLife = 0;
+    this.awakenMaxLife = 0.55;
+  }
+
+  _updateAwakenRing(delta) {
+    if (this.awakenLife <= 0) return;
+
+    this.awakenLife = Math.max(0, this.awakenLife - delta);
+    const t = 1 - this.awakenLife / this.awakenMaxLife;
+    const eased = 1 - Math.pow(1 - t, 3);
+
+    this.awakenRing.scale.setScalar(18 + 320 * eased);
+    this.awakenRing.material.opacity = 0.8 * Math.pow(1 - t, 1.5);
+
+    if (this.awakenLife === 0) this.awakenRing.visible = false;
   }
 
   // =========================================================================

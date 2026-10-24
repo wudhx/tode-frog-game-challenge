@@ -13,6 +13,15 @@ export const POWERUP_MAX_ACTIVE = 3;
 export const POWERUP_LIFETIME = 16;
 /** How close the hero must hop to grab a pickup. */
 export const PICKUP_RADIUS = 62;
+/**
+ * Pickups inside this radius drift toward the hero before being collected.
+ * Widening the collect radius instead would make the pickup snap from far
+ * away; the magnet keeps the grab point explicit while removing the need to
+ * land on the exact centre of the marker.
+ */
+export const PICKUP_MAGNET_RADIUS = 150;
+/** How fast the magnet pulls, in world units per second at the inner edge. */
+export const PICKUP_MAGNET_SPEED = 320;
 /** Height the icons float at, in world units. */
 export const POWERUP_FLOAT = 46;
 
@@ -449,9 +458,24 @@ export class PowerUpManager {
     for (const pickup of this.pickups) {
       pickup.animate(delta);
 
-      const dx = pickup.position.x - playerPosition.x;
-      const dy = pickup.position.y - playerPosition.y;
-      if (Math.hypot(dx, dy) <= PICKUP_RADIUS) {
+      let dx = pickup.position.x - playerPosition.x;
+      let dy = pickup.position.y - playerPosition.y;
+      let distance = Math.hypot(dx, dy);
+
+      // Pull nearby pickups in. The pull eases to zero at the outer edge, so
+      // the pickup starts drifting rather than snapping sideways.
+      if (distance > PICKUP_RADIUS && distance < PICKUP_MAGNET_RADIUS) {
+        const pull =
+          (1 - distance / PICKUP_MAGNET_RADIUS) * PICKUP_MAGNET_SPEED * delta;
+        pickup.position.x -= (dx / distance) * pull;
+        pickup.position.y -= (dy / distance) * pull;
+
+        dx = pickup.position.x - playerPosition.x;
+        dy = pickup.position.y - playerPosition.y;
+        distance = Math.hypot(dx, dy);
+      }
+
+      if (distance <= PICKUP_RADIUS) {
         pickup.collected = true;
 
         // Timed pickups run on a countdown; instant ones are handed back to

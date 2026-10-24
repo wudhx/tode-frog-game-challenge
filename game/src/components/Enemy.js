@@ -1,6 +1,53 @@
 import * as THREE from 'three';
 
 // ---------------------------------------------------------------------------
+// Ground shadows
+// ---------------------------------------------------------------------------
+/** Shared soft-shadow material; the texture is generated once. */
+let enemyShadowMaterial = null;
+
+/**
+ * Returns a soft, round shadow material.
+ *
+ * A flat black circle has a hard edge that reads as a decal. A radial alpha
+ * gradient fades out and makes the insect look like it is hovering above the
+ * grass instead of hovering above a sticker.
+ *
+ * @returns {THREE.MeshBasicMaterial}
+ */
+function getEnemyShadowMaterial() {
+  if (enemyShadowMaterial) return enemyShadowMaterial;
+
+  let map = null;
+  if (typeof document !== 'undefined') {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      const gradient = ctx.createRadialGradient(64, 64, 4, 64, 64, 64);
+      gradient.addColorStop(0, 'rgba(0,0,0,0.55)');
+      gradient.addColorStop(0.55, 'rgba(0,0,0,0.22)');
+      gradient.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, 128, 128);
+
+      map = new THREE.CanvasTexture(canvas);
+      map.colorSpace = THREE.SRGBColorSpace;
+    }
+  }
+
+  enemyShadowMaterial = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    map,
+    transparent: true,
+    opacity: map ? 0.62 : 0.16,
+    depthWrite: false,
+  });
+  return enemyShadowMaterial;
+}
+
+// ---------------------------------------------------------------------------
 // Tuning constants
 // ---------------------------------------------------------------------------
 /** Base delay between enemy spawns, in seconds. */
@@ -722,6 +769,18 @@ export class Enemy {
     this.visual.position.z = ENEMY_HOVER;
     if (this.scale !== 1) this.visual.scale.setScalar(this.scale);
     this.group.add(this.visual);
+
+    // A soft ground shadow anchors the hovering body to the board. It lives on
+    // the ground group, not the lifted visual, so it stays put while the body
+    // hovers and cannot inherit the body's wing/tilt animation.
+    this.shadow = new THREE.Mesh(
+      new THREE.CircleGeometry(1, 24),
+      getEnemyShadowMaterial()
+    );
+    this.shadow.scale.setScalar(this.radius);
+    this.shadow.position.z = 0.75;
+    this.shadow.renderOrder = 1;
+    this.group.add(this.shadow);
 
     // Elites wear a gold ring and always drop a gene.
     this.elite = elite;
